@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ensilados-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - JWT_SECRET=ensilados-santa-cruz-jwt-secret-2024
+      - GOOGLE_MAPS_API_KEY=
+    env_file:
+      - ./backend/.env
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ensilados-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: always
