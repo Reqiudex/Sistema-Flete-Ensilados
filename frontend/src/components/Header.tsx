@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, Sprout, ShoppingCart, LogOut, ChevronDown, Leaf } from 'lucide-react';
+import { Menu, X, Sprout, ShoppingCart, LogOut, ChevronDown, Leaf, Home, Wheat, Settings } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface HeaderProps {
@@ -21,9 +21,9 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
   }, []);
 
   const navItems = [
-    { id: 'landing', label: 'Inicio', icon: '🏠' },
-    { id: 'catalog', label: 'Catálogo', icon: '🌾' },
-    { id: 'admin', label: user ? `${user.role}` : 'Administración', icon: '⚙️' },
+    { id: 'landing', label: 'Inicio', icon: <Home className="h-5 w-5" /> },
+    { id: 'catalog', label: 'Catálogo', icon: <Wheat className="h-5 w-5" /> },
+    { id: 'admin', label: user ? `${user.role}` : 'Administración', icon: <Settings className="h-5 w-5" /> },
   ];
 
   const handleNavClick = (viewId: string) => {

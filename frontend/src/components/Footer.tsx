@@ -1,14 +1,14 @@
-import { Phone, MapPin, Mail, Sprout, ExternalLink, Heart, ArrowUpRight } from 'lucide-react';
+import { Phone, MapPin, Mail, Sprout, ExternalLink, Heart, ArrowUpRight, Tractor, Droplets, Wheat, Plane, Warehouse, Zap, Clock, Moon, MessageCircle } from 'lucide-react';
 
 export default function Footer() {
   const year = new Date().getFullYear();
 
   const services = [
-    { icon: '🚜', text: 'Preparación y Siembra' },
-    { icon: '💧', text: 'Sistemas de Riego Rural' },
-    { icon: '🌾', text: 'Cosecha Mecanizada' },
-    { icon: '🚁', text: 'Fumigación Terrestre y Aérea' },
-    { icon: '🏗️', text: 'Almacenamiento en Silos' },
+    { icon: <Tractor className="h-5 w-5" />, text: 'Preparación y Siembra' },
+    { icon: <Droplets className="h-5 w-5" />, text: 'Sistemas de Riego Rural' },
+    { icon: <Wheat className="h-5 w-5" />, text: 'Cosecha Mecanizada' },
+    { icon: <Plane className="h-5 w-5" />, text: 'Fumigación Terrestre y Aérea' },
+    { icon: <Warehouse className="h-5 w-5" />, text: 'Almacenamiento en Silos' },
   ];
 
   const contactItems = [
@@ -67,7 +67,7 @@ export default function Footer() {
           {/* ── Contact ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-100">
             <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs">📍</span>
+              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><MapPin className="h-3 w-3" /></span>
               Central de Silos
             </h4>
             <ul className="space-y-3">
@@ -91,7 +91,7 @@ export default function Footer() {
           {/* ── Services ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-200">
             <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs">⚡</span>
+              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Zap className="h-3 w-3" /></span>
               Nuestros Servicios
             </h4>
             <ul className="space-y-2">
@@ -110,7 +110,7 @@ export default function Footer() {
           {/* ── Hours & CTA ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-300">
             <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs">🕐</span>
+              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Clock className="h-3 w-3" /></span>
               Horario de Atención
             </h4>
             <ul className="space-y-2 text-sm text-dark-300">
@@ -129,8 +129,8 @@ export default function Footer() {
             </ul>
 
             <div className="p-3 glass-gold rounded-xl">
-              <p className="text-xs text-gold-300 font-semibold">
-                🌙 Despacho logístico 24/7 durante época de cosecha
+              <p className="text-xs text-gold-300 font-semibold flex items-center gap-1.5">
+                <Moon className="h-4 w-4" /> Despacho logístico 24/7 durante época de cosecha
               </p>
             </div>
 
@@ -141,7 +141,7 @@ export default function Footer() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 w-full btn-agro px-4 py-2.5 text-xs justify-center rounded-xl"
             >
-              <span className="text-base">💬</span>
+              <span className="text-base flex items-center justify-center"><MessageCircle className="h-4 w-4" /></span>
               <span>WhatsApp Directo</span>
               <ExternalLink className="h-3 w-3 ml-auto" />
             </a>

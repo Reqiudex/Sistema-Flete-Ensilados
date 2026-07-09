@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, ArrowRight, Trash2, ShieldCheck, ShoppingCart, User, Phone, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, ArrowRight, Trash2, ShieldCheck, ShoppingCart, User, Phone, CheckCircle2, Wheat, Sprout } from 'lucide-react';
 import { Product, CartItem } from '../types';
 import MapComponent from './MapComponent';
 
@@ -100,12 +100,12 @@ export default function CatalogCart({
   // Helper product illustrations/badges
   const getProductIcon = (name: string) => {
     if (name.toLowerCase().includes('maíz') || name.toLowerCase().includes('maiz')) {
-      return '🌽';
+      return <Wheat className="h-10 w-10 text-yellow-500" />;
     }
     if (name.toLowerCase().includes('soya')) {
-      return '🌱';
+      return <Sprout className="h-10 w-10 text-green-500" />;
     }
-    return '🌾';
+    return <Wheat className="h-10 w-10 text-orange-400" />;
   };
 
   return (

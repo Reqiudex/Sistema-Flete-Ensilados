@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Mail, Lock, Eye, EyeOff, Sprout, Shield, Chrome, Facebook,
-  ArrowRight, Loader2, CheckCircle2
+  ArrowRight, Loader2, CheckCircle2, Key, Wheat, Leaf, Tractor, Sun
 } from 'lucide-react';
 import { UserProfile, Toast } from '../types';
 
@@ -67,7 +67,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
         email: em, role: account.role, two_factor_enabled: false
       };
       const mockToken = btoa(JSON.stringify(mockUser) + ':demo');
-      addToast({ type: 'success', title: '✅ Acceso Demo', message: `Sesión iniciada como ${account.role} (modo offline).` });
+      addToast({ type: 'success', title: 'Acceso Demo', message: `Sesión iniciada como ${account.role} (modo offline).` });
       onLogin(mockUser, mockToken);
     } else {
       addToast({
@@ -93,7 +93,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
         return;
       }
 
-      addToast({ type: 'success', title: '✅ Verificado', message: 'Autenticación de doble factor correcta.' });
+      addToast({ type: 'success', title: 'Verificado', message: 'Autenticación de doble factor correcta.' });
       onLogin(data.user, data.token);
     } catch (_err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo conectar con el servidor.' });
@@ -121,7 +121,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
         {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="absolute text-2xl animate-float opacity-20"
+            className="absolute animate-float opacity-20 flex items-center justify-center"
             style={{
               left: `${10 + i * 15}%`,
               top: `${20 + (i % 3) * 30}%`,
@@ -129,7 +129,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
               animationDuration: `${3 + i * 0.5}s`
             }}
           >
-            {['🌾', '🌿', '🌱', '🚜', '🌽', '🌻'][i]}
+            {[<Wheat className="h-8 w-8 text-gold-400" />, <Leaf className="h-8 w-8 text-green-500" />, <Sprout className="h-8 w-8 text-green-400" />, <Tractor className="h-8 w-8 text-agro-500" />, <Wheat className="h-8 w-8 text-yellow-500" />, <Sun className="h-8 w-8 text-yellow-400" />][i]}
           </div>
         ))}
       </div>
@@ -161,7 +161,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
 
               {/* Demo Credentials hint */}
               <div className="mb-5 p-3 bg-gold-500/10 border border-gold-500/20 rounded-xl text-xs text-gold-300">
-                <p className="font-bold mb-1">🔑 Credenciales Demo:</p>
+                <p className="font-bold mb-1 flex items-center gap-1.5"><Key className="h-4 w-4" /> Credenciales Demo:</p>
                 <p>Superadmin: <span className="text-white font-mono">superadmin@ensilados.com</span> / <span className="text-white font-mono">superadmin123</span></p>
                 <p>Admin: <span className="text-white font-mono">admin@ensilados.com</span> / <span className="text-white font-mono">admin123</span></p>
               </div>

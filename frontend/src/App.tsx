@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Sprout, Tractor, Droplets, Wheat, Plane } from 'lucide-react';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import CatalogCart from './components/CatalogCart';
@@ -226,8 +226,8 @@ export default function App() {
               </div>
 
               <div className="max-w-5xl mx-auto text-center space-y-6 relative z-10">
-                <span className="bg-agro-500/50 text-agro-accent font-extrabold text-xs uppercase tracking-widest px-4 py-2 rounded-full border border-agro-accent/20">
-                  🌱 Logística Agrícola Digital en Santa Cruz
+                <span className="inline-flex items-center gap-1.5 bg-agro-500/50 text-agro-accent font-extrabold text-xs uppercase tracking-widest px-4 py-2 rounded-full border border-agro-accent/20">
+                  <Sprout className="h-4 w-4" /> Logística Agrícola Digital en Santa Cruz
                 </span>
                 <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight font-sans">
                   Ensilados de Alta Calidad para su Ganadería
@@ -290,27 +290,27 @@ export default function App() {
                 {[
                   {
                     title: 'Plantación y Siembra',
-                    icon: '🚜',
+                    icon: <Tractor className="h-10 w-10 text-agro-500" />,
                     desc: 'Maquinaria de siembra neumática de precisión para maíz, soya y sorgo, maximizando rendimiento por hectárea.'
                   },
                   {
                     title: 'Sistemas de Riego',
-                    icon: '💧',
+                    icon: <Droplets className="h-10 w-10 text-blue-400" />,
                     desc: 'Instalación y monitoreo de pivotes y sistemas por goteo para contrarrestar sequías climáticas.'
                   },
                   {
                     title: 'Cosecha y Colecta',
-                    icon: '🌾',
+                    icon: <Wheat className="h-10 w-10 text-gold-400" />,
                     desc: 'Cosecha mecanizada ultra-rápida, picado de forraje de calidad y ensilado compacto in-situ o traslado.'
                   },
                   {
                     title: 'Fumigación de Cultivos',
-                    icon: '🚁',
+                    icon: <Plane className="h-10 w-10 text-gray-500" />,
                     desc: 'Control de plagas terrestre y aéreo con drones avanzados para coberturas uniformes y ecológicas.'
                   }
                 ].map((srv, idx) => (
                   <div key={idx} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
-                    <span className="text-4xl block mb-4">{srv.icon}</span>
+                    <div className="mb-4">{srv.icon}</div>
                     <h3 className="font-extrabold text-gray-800 text-lg mb-2">{srv.title}</h3>
                     <p className="text-gray-500 text-xs leading-relaxed">{srv.desc}</p>
                   </div>

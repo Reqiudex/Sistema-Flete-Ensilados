@@ -6,7 +6,7 @@ import {
 import {
   Truck, ArrowUpRight, TrendingUp,
   Package, DollarSign, Users, PlusCircle, Trash2, Edit2, ShieldAlert,
-  Key, Mail, Save, CheckCircle, QrCode, Lock, RefreshCw, LogOut
+  Key, Mail, Save, CheckCircle, QrCode, Lock, RefreshCw, LogOut, Wheat, Sprout
 } from 'lucide-react';
 import { Order, Product, UserProfile } from '../types';
 import {
@@ -1055,8 +1055,8 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 <div key={prod.id} className="glass rounded-2xl p-6 border-gradient-agro flex flex-col justify-between hover:scale-[1.01] transition-all">
                   <div>
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-3xl bg-dark-900 border border-dark-700 p-2.5 rounded-xl block">
-                        {prod.name.toLowerCase().includes('maíz') || prod.name.toLowerCase().includes('maiz') ? '🌽' : prod.name.toLowerCase().includes('soya') ? '🌱' : '🌾'}
+                      <span className="bg-dark-900 border border-dark-700 p-2.5 rounded-xl block">
+                        {prod.name.toLowerCase().includes('maíz') || prod.name.toLowerCase().includes('maiz') ? <Wheat className="h-6 w-6 text-yellow-500" /> : prod.name.toLowerCase().includes('soya') ? <Sprout className="h-6 w-6 text-green-500" /> : <Wheat className="h-6 w-6 text-orange-400" />}
                       </span>
                       <div className="flex space-x-1">
                         <button
@@ -1238,7 +1238,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               {twoFAStep === 'none' && (
                 <div className="space-y-4">
                   <div className="p-4 bg-dark-900 border border-dark-800 rounded-xl text-xs text-dark-300 leading-relaxed">
-                    <p className="font-bold text-white mb-2">🔒 Nivel de seguridad básico</p>
+                    <p className="font-bold text-white mb-2 flex items-center gap-2"><Lock className="h-4 w-4" /> Nivel de seguridad básico</p>
                     Para activar, presione el botón de abajo. Deberá escanear el código QR con una app de autenticación (Google Authenticator, Authy, Microsoft Authenticator) e ingresar el código generado.
                   </div>
                   <button
@@ -1307,7 +1307,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                   <div className="p-4 bg-agro-500/10 border border-agro-500/30 rounded-xl text-xs flex items-center gap-3">
                     <CheckCircle className="h-8 w-8 text-green-400 shrink-0" />
                     <div>
-                      <strong className="text-green-400 block font-bold">✅ Doble factor activo</strong>
+                      <strong className="text-green-400 font-bold flex items-center gap-1.5 mb-1"><CheckCircle className="h-4 w-4" /> Doble factor activo</strong>
                       Su cuenta cuenta con una de las capas de seguridad más avanzadas disponibles en el sistema.
                     </div>
                   </div>
