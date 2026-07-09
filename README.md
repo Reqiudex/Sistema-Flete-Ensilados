@@ -1,4 +1,4 @@
-# 🌾 Ensilados Santa Cruz - CRM & Logística Agrícola
+# Ensilados Santa Cruz - CRM & Logística Agrícola
 
 Sistema inteligente y automatizado para la cotización de fletes y la venta de ensilados (Silo de Maíz, Soya, Sorgo) con geolocalización en tiempo real y resiliencia offline para productores agropecuarios en el departamento de Santa Cruz, Bolivia.
 
@@ -6,7 +6,7 @@ El proyecto está diseñado bajo una arquitectura limpia y modular con un Fronte
 
 ---
 
-## 🛠️ Stack Tecnológico
+## Stack Tecnológico
 
 - **Frontend:** React, TypeScript, Tailwind CSS, Recharts (gráficas), Lucide Icons, html2canvas / purifiy-css (reportes PDF).
 - **Backend:** Node.js, Express (Arquitectura Modelo-Vista-Controlador).
@@ -17,7 +17,7 @@ El proyecto está diseñado bajo una arquitectura limpia y modular con un Fronte
 
 ---
 
-## 🐋 Ejecución con Docker (Recomendado para Pruebas)
+## Ejecución con Docker (Recomendado para Pruebas)
 
 El proyecto incluye contenedores Docker configurados tanto para el backend como para el frontend. Esto permite iniciar todo el sistema con un solo comando sin necesidad de configurar dependencias locales.
 
@@ -42,7 +42,7 @@ docker-compose down
 
 ---
 
-## 💻 Desarrollo Local (Sin Docker)
+## Desarrollo Local (Sin Docker)
 
 Si prefieres ejecutar los servicios individualmente en tu máquina local:
 
@@ -79,7 +79,7 @@ Si prefieres ejecutar los servicios individualmente en tu máquina local:
 
 ---
 
-## 🔐 Credenciales de Acceso Demo
+## Credenciales de Acceso Demo
 
 El sistema viene preconfigurado con cuentas de prueba para evaluar los roles administrativos del CRM (incluso si está offline):
 
@@ -92,37 +92,7 @@ El sistema viene preconfigurado con cuentas de prueba para evaluar los roles adm
 
 ---
 
-## 🚀 Subir el Proyecto a GitHub
-
-Sigue estos pasos para inicializar un repositorio Git y subir el código a GitHub:
-
-1. **Inicializar Git** (en la raíz del proyecto):
-   ```bash
-   git init
-   ```
-2. **Añadir los archivos al área de preparación:**
-   ```bash
-   git add .
-   ```
-   *(El archivo `.gitignore` configurado evitará automáticamente subir `node_modules`, `.env` y otros temporales).*
-3. **Crear el primer commit:**
-   ```bash
-   git commit -m "feat: implementacion de CRM Ensilados Santa Cruz, Docker e interfaz premium"
-   ```
-4. **Vincular con tu repositorio de GitHub:**
-   Crea un repositorio en blanco en GitHub y copia la URL de vinculación. Luego ejecuta:
-   ```bash
-   git branch -M main
-   git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git
-   ```
-5. **Subir los cambios:**
-   ```bash
-   git push -u origin main
-   ```
-
----
-
-## 📊 Base de Datos
+## Base de Datos
 
 El script SQL completo para montar la base de datos en Supabase o cualquier PostgreSQL se encuentra en:
 - `database/schema.sql`
