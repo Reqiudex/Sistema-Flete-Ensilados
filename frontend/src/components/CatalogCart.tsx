@@ -29,7 +29,8 @@ export default function CatalogCart({
   updateCartQty,
   onSubmitOrder,
 }: CatalogCartProps) {
-  const [step, setStep] = useState<'catalog' | 'checkout'>('catalog');
+  const [step, setStep] = useState<'catalog' | 'terms' | 'checkout'>('catalog');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'QR' | 'Transferencia' | 'WhatsApp'>('QR');
@@ -121,22 +122,37 @@ export default function CatalogCart({
           }`}
         >
           <span className="w-6 h-6 rounded-full bg-agro-100 text-agro-600 flex items-center justify-center text-xs font-bold">1</span>
-          <span>Seleccionar Silos</span>
+          <span className="hidden sm:inline">Seleccionar Silos</span>
         </button>
-        <div className="h-0.5 w-12 bg-gray-200"></div>
+        <div className="h-0.5 w-6 sm:w-12 bg-gray-200"></div>
         <button
           disabled={cart.length === 0}
-          onClick={() => setStep('checkout')}
+          onClick={() => setStep('terms')}
           className={`flex items-center space-x-2 text-sm font-bold pb-2 border-b-2 transition-all ${
             cart.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+          } ${
+            step === 'terms'
+              ? 'border-agro-500 text-agro-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <span className="w-6 h-6 rounded-full bg-agro-100 text-agro-600 flex items-center justify-center text-xs font-bold">2</span>
+          <span className="hidden sm:inline">Términos</span>
+        </button>
+        <div className="h-0.5 w-6 sm:w-12 bg-gray-200"></div>
+        <button
+          disabled={cart.length === 0 || !acceptedTerms}
+          onClick={() => { if (acceptedTerms) setStep('checkout') }}
+          className={`flex items-center space-x-2 text-sm font-bold pb-2 border-b-2 transition-all ${
+            (cart.length === 0 || !acceptedTerms) ? 'opacity-50 cursor-not-allowed' : ''
           } ${
             step === 'checkout'
               ? 'border-agro-500 text-agro-600'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
-          <span className="w-6 h-6 rounded-full bg-agro-100 text-agro-600 flex items-center justify-center text-xs font-bold">2</span>
-          <span>Datos y Ubicación</span>
+          <span className="w-6 h-6 rounded-full bg-agro-100 text-agro-600 flex items-center justify-center text-xs font-bold">3</span>
+          <span className="hidden sm:inline">Datos y Ubicación</span>
         </button>
       </div>
 
@@ -266,7 +282,7 @@ export default function CatalogCart({
                 </div>
 
                 <button
-                  onClick={() => setStep('checkout')}
+                  onClick={() => setStep('terms')}
                   className="w-full bg-agro-500 hover:bg-agro-600 text-white py-3 rounded-xl font-bold text-base transition-all shadow-md hover:shadow-lg hover:scale-[1.01] flex items-center justify-center space-x-2"
                 >
                   <span>Continuar Cotización</span>
@@ -277,8 +293,71 @@ export default function CatalogCart({
           </div>
 
         </div>
+      ) : step === 'terms' ? (
+        <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 space-y-6">
+          <h2 className="text-2xl font-extrabold text-agro-600 text-center">Términos y Condiciones de Uso</h2>
+          
+          <div className="h-96 overflow-y-auto pr-4 space-y-4 text-sm text-gray-600 border border-gray-100 rounded-xl p-4 md:p-6 bg-gray-50">
+            <div>
+              <h3 className="font-bold text-gray-800 text-base mb-2">A. Marco legal sobre tecnologías de información y protección de datos</h3>
+              <p className="mb-2">De acuerdo a la Ley N.º 164 (Ley General de Telecomunicaciones, Tecnologías de Información y Comunicación) del Estado Plurinacional de Bolivia, los códigos de pedido generados por la plataforma son registros internos y no constituyen documentos fiscales ni comprobantes tributarios.</p>
+              <p>Conforme a la Constitución Política del Estado, garantizamos la protección y privacidad de sus datos. La información de geolocalización obtenida mediante Google Maps será utilizada únicamente para determinar distancias y estimar costos de transporte logístico. El sistema no realiza seguimiento permanente de la ubicación del usuario.</p>
+            </div>
+            
+            <div className="pt-4 border-t border-gray-200">
+              <h3 className="font-bold text-gray-800 text-base mb-2">B. Naturaleza jurídica de la cotización y exclusión tributaria</h3>
+              <p className="mb-2">Los valores generados por el sistema corresponden a <strong>estimaciones operativas referenciales</strong> destinadas a facilitar la determinación del costo de transporte. <strong>No representan una factura electrónica ni un documento tributario reconocido por el Servicio de Impuestos Nacionales (SIN).</strong></p>
+              <p>La plataforma se limita al cálculo logístico considerando variables operativas (distancia, peso, etc). La emisión del documento fiscal definitivo (con IVA, IT u otros gravámenes) se realizará posteriormente mediante los mecanismos administrativos y contables establecidos por Ensilados Santa Cruz, de forma externa al sistema.</p>
+            </div>
+            
+            <div className="pt-4 border-t border-gray-200">
+              <h3 className="font-bold text-gray-800 text-base mb-2">C. Consideraciones del Sistema y Variabilidad Logística</h3>
+              <p className="mb-2">El cálculo del flete generado por el sistema corresponde a una estimación basada en distancia y rutas disponibles. <strong>Factores externos</strong> como condiciones climáticas, bloqueos, estado de los caminos o modificaciones forzosas en la ruta pueden generar variaciones en el costo final del servicio de transporte en el momento de la entrega.</p>
+              <p><strong>Consentimiento para uso de ubicación:</strong> Al proporcionar su ubicación mediante el mapa integrado en el siguiente paso, el usuario acepta de forma expresa que sus coordenadas sean utilizadas exclusivamente para el propósito de calcular el costo de transporte y gestionar la entrega de su pedido.</p>
+            </div>
+
+            <div className="pt-4 border-t border-gray-200">
+              <h3 className="font-bold text-gray-800 text-base mb-2">D. Pagos digitales y normativa financiera</h3>
+              <p>Actualmente, este sistema no incorpora mecanismos de pago electrónico en línea (tarjetas, débito automático) dentro de la plataforma. Los pagos se coordinan de forma administrativa y externa según los métodos acordados, cumpliendo la normativa financiera vigente (ASFI) aplicable a operaciones comerciales.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start space-x-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+            <input
+              type="checkbox"
+              id="accept-terms"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-1 h-5 w-5 rounded border-gray-300 text-agro-500 focus:ring-agro-400 focus:ring-offset-0 cursor-pointer"
+            />
+            <label htmlFor="accept-terms" className="text-sm font-medium text-gray-700 cursor-pointer leading-snug">
+              He leído y acepto los términos de uso, exclusión tributaria de la cotización, y doy mi consentimiento para compartir mi ubicación exclusivamente para el cálculo del flete logístico según la normativa boliviana.
+            </label>
+          </div>
+
+          <div className="flex flex-col-reverse sm:flex-row justify-between pt-4 gap-4 sm:gap-0">
+            <button
+              type="button"
+              onClick={() => setStep('catalog')}
+              className="px-6 py-3 sm:py-2 border border-gray-300 text-gray-600 rounded-xl font-bold hover:bg-gray-50 transition-all text-center"
+            >
+              Volver al Catálogo
+            </button>
+            <button
+              type="button"
+              disabled={!acceptedTerms}
+              onClick={() => setStep('checkout')}
+              className={`px-8 py-3 sm:py-2 rounded-xl font-extrabold text-white transition-all flex items-center justify-center space-x-2 ${
+                acceptedTerms ? 'bg-agro-500 hover:bg-agro-600 shadow-md hover:scale-[1.02]' : 'bg-gray-300 cursor-not-allowed'
+              }`}
+            >
+              <span>Continuar a Ubicación</span>
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
       ) : (
-        /* Step 2: Checkout with Map and Customer details */
+        /* Step 3: Checkout with Map and Customer details */
         <form onSubmit={handleCheckoutSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Customer Form & Logistics details */}
@@ -393,10 +472,10 @@ export default function CatalogCart({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep('catalog')}
+                  onClick={() => setStep('terms')}
                   className="text-xs font-bold text-agro-500 hover:underline"
                 >
-                  Volver al Catálogo
+                  Volver a Términos
                 </button>
               </div>
 

@@ -213,7 +213,7 @@ export default function App() {
       />
 
       {/* Main Content Areas */}
-      <main className="flex-grow">
+      <main className="flex-grow relative z-10">
         {currentView === 'landing' && (
           <div className="space-y-16 pb-16">
             

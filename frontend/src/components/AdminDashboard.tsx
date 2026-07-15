@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
@@ -6,8 +7,10 @@ import {
 import {
   Truck, ArrowUpRight, TrendingUp,
   Package, DollarSign, Users, PlusCircle, Trash2, Edit2, ShieldAlert,
-  Key, Mail, Save, CheckCircle, QrCode, Lock, RefreshCw, LogOut, Wheat, Sprout
+  Key, Mail, Save, CheckCircle, QrCode, Lock, RefreshCw, LogOut, Wheat, Sprout, Download, X
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { Order, Product, UserProfile } from '../types';
 import {
   supabase, isSupabaseConfigured, getLocalOrders, updateLocalOrderStatus, saveLocalOrder, getLocalProducts
@@ -20,7 +23,9 @@ interface AdminDashboardProps {
   addToast: (toast: any) => void;
 }
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:3001/api' 
+  : 'https://api.tesis.cherry.lat/api';
 
 const PRODUCT_COLORS = ['#2d6a4f', '#7dd0a3', '#b0e6c5', '#1b4332'];
 const PROFIT_COLORS = ['#2d6a4f', '#ef4444', '#d4a217']; // Green (Profit), Red (Materials Cost), Yellow (Logistics Cost)
@@ -605,6 +610,46 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
 
   const stats = computeStats();
 
+  const generatePDFReport = async () => {
+    const element = document.getElementById('pdf-report-template');
+    if (!element) {
+      addToast({ type: 'error', title: 'Error', message: 'No se encontró la plantilla del reporte.' });
+      return;
+    }
+    try {
+      addToast({ type: 'info', title: 'Generando...', message: 'Preparando el reporte PDF profesional.' });
+      
+      // Mostrar temporalmente para el renderizado
+      element.style.display = 'block';
+      
+      const canvas = await html2canvas(element, { 
+        scale: 2, 
+        useCORS: true, 
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      
+      // Ocultar de nuevo
+      element.style.display = 'none';
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Reporte_Ventas_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}.pdf`);
+      addToast({ type: 'success', title: 'Reporte Generado', message: 'El PDF ha sido descargado exitosamente.' });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'No se pudo generar el reporte.' });
+    }
+  };
+
   const getDriverRouteLink = (lat: number, lng: number) => {
     return `https://www.google.com/maps/dir/?api=1&origin=-16.6133,-62.4994&destination=${lat},${lng}&travelmode=driving`;
   };
@@ -680,7 +725,18 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
         
         {/* TAB 1: DASHBOARD STATS */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in" id="dashboard-report-area">
+            {/* Header for Dashboard Actions */}
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={generatePDFReport}
+                className="btn-gold py-2 px-4 flex items-center space-x-2 font-bold text-xs shadow-sm rounded-xl"
+              >
+                <Download className="h-4 w-4" />
+                <span>Exportar Reporte PDF</span>
+              </button>
+            </div>
+
             {/* Cards metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="glass rounded-2xl p-6 flex items-center justify-between border-gradient-agro">
@@ -1346,10 +1402,15 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
       </div>
 
       {/* CRM ORDER MODAL (CREATION) */}
-      {showOrderModal && (
-        <div className="fixed inset-0 z-50 bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+      {showOrderModal && createPortal(
+        <div className="fixed inset-0 z-[100] bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <form onSubmit={handleRegisterManualOrder} className="glass rounded-3xl p-6 max-w-lg w-full border-gradient-agro space-y-4 animate-scale-in">
-            <h3 className="font-display font-extrabold text-white text-lg">Registrar Venta Directa (Manual)</h3>
+            <div className="flex justify-between items-start">
+              <h3 className="font-display font-extrabold text-white text-lg">Registrar Venta Directa (Manual)</h3>
+              <button type="button" onClick={() => setShowOrderModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
@@ -1468,16 +1529,22 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* PRODUCT MODAL (CREATE / EDIT) */}
-      {showProductModal && (
-        <div className="fixed inset-0 z-50 bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+      {showProductModal && createPortal(
+        <div className="fixed inset-0 z-[100] bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <form onSubmit={handleProductSubmit} className="glass rounded-3xl p-6 max-w-md w-full border-gradient-agro space-y-4 animate-scale-in">
-            <h3 className="font-display font-extrabold text-white text-lg">
-              {editingProduct ? `Editar Silo: ${editingProduct.name}` : 'Registrar Nuevo Silo de Forraje'}
-            </h3>
+            <div className="flex justify-between items-start">
+              <h3 className="font-display font-extrabold text-white text-lg">
+                {editingProduct ? `Editar Silo: ${editingProduct.name}` : 'Registrar Nuevo Silo de Forraje'}
+              </h3>
+              <button type="button" onClick={() => setShowProductModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             
             <div className="space-y-3">
               <div>
@@ -1560,16 +1627,22 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ADMIN USERS MODAL (CREATE / EDIT) */}
-      {showAdminModal && (
-        <div className="fixed inset-0 z-50 bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+      {showAdminModal && createPortal(
+        <div className="fixed inset-0 z-[100] bg-dark-950/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <form onSubmit={handleAdminSubmit} className="glass rounded-3xl p-6 max-w-sm w-full border-gradient-agro space-y-4 animate-scale-in">
-            <h3 className="font-display font-extrabold text-white text-lg">
-              {editingAdmin ? 'Modificar Administrador' : 'Registrar Nuevo Administrador'}
-            </h3>
+            <div className="flex justify-between items-start">
+              <h3 className="font-display font-extrabold text-white text-lg">
+                {editingAdmin ? 'Modificar Administrador' : 'Registrar Nuevo Administrador'}
+              </h3>
+              <button type="button" onClick={() => setShowAdminModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             
             <div className="space-y-3">
               <div>
@@ -1627,8 +1700,109 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
+
+      {/* Plantilla oculta para el PDF (A4 Portrait aprox proportion) */}
+      <div 
+        id="pdf-report-template" 
+        className="bg-white text-black p-10 w-[800px]" 
+        style={{ display: 'none', position: 'absolute', left: '-9999px', top: '-9999px' }}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-end border-b-2 border-gray-300 pb-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-gray-900">Reporte de Ventas y CRM</h1>
+            <p className="text-lg text-gray-600 font-bold">Ensilados Santa Cruz</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</p>
+            <p className="text-sm text-gray-500">Generado por: {user.email}</p>
+          </div>
+        </div>
+
+        {/* Resumen Financiero */}
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4">Resumen Financiero y Operativo</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border border-gray-200 bg-gray-50 p-4 rounded-xl flex justify-between items-center">
+              <span className="text-sm text-gray-600 font-bold uppercase">Ventas Totales</span>
+              <span className="text-xl font-black text-gray-900">{stats.salesTotal.toLocaleString()} Bs.</span>
+            </div>
+            <div className="border border-green-200 bg-green-50 p-4 rounded-xl flex justify-between items-center">
+              <span className="text-sm text-green-700 font-bold uppercase">Ganancia Neta</span>
+              <span className="text-xl font-black text-green-700">{stats.netProfit.toLocaleString()} Bs.</span>
+            </div>
+            <div className="border border-red-200 bg-red-50 p-4 rounded-xl flex justify-between items-center">
+              <span className="text-sm text-red-700 font-bold uppercase">Costos Totales</span>
+              <span className="text-xl font-black text-red-700">{(stats.materialsCost + stats.logisticsCost).toLocaleString()} Bs.</span>
+            </div>
+            <div className="border border-gray-200 bg-gray-50 p-4 rounded-xl flex justify-between items-center">
+              <span className="text-sm text-gray-600 font-bold uppercase">Volumen Desp.</span>
+              <span className="text-xl font-black text-gray-900">{stats.tonsTotal} Tons</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráficos Principales */}
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4">Facturación Mensual</h2>
+          <div className="bg-white">
+            <BarChart width={720} height={300} data={stats.monthlyTrendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+              <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
+              <YAxis stroke="#6b7280" fontSize={12} />
+              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '13px' }}/>
+              <Bar dataKey="ingresos" fill="#15803d" name="Ingresos (Bs.)" />
+              <Bar dataKey="costos" fill="#dc2626" name="Costos (Bs.)" />
+              <Bar dataKey="ganancia" fill="#ca8a04" name="Ganancia Neta" />
+            </BarChart>
+          </div>
+        </div>
+
+        {/* Desglose de Distribución */}
+        <div className="grid grid-cols-2 gap-8 mb-8">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4">Costos vs Ganancias</h2>
+            <PieChart width={340} height={250}>
+              <Pie
+                data={stats.gainLossData}
+                cx="50%" cy="50%"
+                innerRadius={60} outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+              >
+                {stats.gainLossData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={PROFIT_COLORS[index % PROFIT_COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
+            </PieChart>
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4">Ventas por Producto</h2>
+            <PieChart width={340} height={250}>
+              <Pie
+                data={stats.salesByProductData}
+                cx="50%" cy="50%"
+                innerRadius={60} outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+              >
+                {stats.salesByProductData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
+            </PieChart>
+          </div>
+        </div>
+        
+        <div className="mt-12 text-center text-gray-400 text-xs border-t border-gray-200 pt-4">
+          Reporte generado automáticamente por el Sistema Administrativo Ensilados Santa Cruz
+        </div>
+      </div>
 
     </div>
   );

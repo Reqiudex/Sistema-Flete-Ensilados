@@ -10,7 +10,9 @@ interface AuthScreenProps {
   addToast: (toast: Omit<Toast, 'id'>) => void;
 }
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:3001/api' 
+  : 'https://api.tesis.cherry.lat/api';
 
 export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
   const [email, setEmail] = useState('');
