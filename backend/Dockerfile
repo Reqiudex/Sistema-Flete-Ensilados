@@ -1,20 +1,10 @@
-# Build stage for node app
-FROM node:18-alpine
-
-# Set working directory
+FROM node:20-alpine
 WORKDIR /usr/src/app
-
-# Copy package files
+ENV NODE_ENV=production
 COPY package*.json ./
-
-# Install dependencies (only production dependencies for smaller image size)
 RUN npm install --omit=dev
-
-# Copy the rest of the application code
 COPY . .
-
-# Expose port
+USER node
 EXPOSE 3001
-
-# Command to run the application
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://localhost:3001/api/health || exit 1
 CMD ["npm", "start"]
