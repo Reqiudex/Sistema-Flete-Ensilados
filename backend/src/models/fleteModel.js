@@ -1,165 +1,137 @@
 /**
- * ============================================================
- * MÓDULO: fleteModel.js
- * Sistema de Cálculo de Fletes – Ensilados Santa Cruz
- * ============================================================
- * HU05: Algoritmo de cálculo automático de flete considerando
- *       distancia calculada de Google Maps API y peso en TM.
+ * Modelo de cálculo de fletes – Ensilados Santa Cruz (HU05)
  *
- * LÓGICA DEL ALGORITMO:
- *   Flete = Tarifa Base + (Distancia_km × Precio_km) + Factor_Producto
+ * Funciones puras (sin acceso a red ni a base de datos).
  *
- * Donde:
- *   - Tarifa Base:     Costo mínimo fijo del viaje (Bs.)
- *   - Distancia_km:    Ruta terrestre real por Google Maps API,
- *                      o Haversine × 1.25 como contingencia offline.
- *   - Precio_km:       Costo variable por kilómetro recorrido (Bs./km)
- *   - Factor_Producto: Ajuste logístico por tipo y densidad de producto
- *                      Σ(cantidad_tons_i × factor_flete_i)
+ * Algoritmo:
+ *   viajes          = ceil(peso_total / capacidad_vehiculo)          (mínimo 1)
+ *   costo_viaje     = tarifa_base + distancia_km × precio_km
+ *   costo_transporte = viajes × costo_viaje
+ *   costo_factor    = Σ (toneladas_i × factor_flete_i)               (ajuste por tipo de producto)
+ *   FLETE           = costo_transporte + costo_factor
  *
- * ORIGEN FIJO: Planta de San Ramón, Santa Cruz, Bolivia
- *   Latitud:  -16.6133
- *   Longitud: -62.4994
- * ============================================================
+ * La distancia proviene de Google Maps (Distance Matrix) o, como contingencia,
+ * de la fórmula de Haversine × factor de corrección rural.
  */
-
 'use strict';
 
-// ------------------------------------------------------------
-// Parámetros geográficos del punto de origen (San Ramón)
-// ------------------------------------------------------------
-const ORIGEN_LAT = -16.6133;
-const ORIGEN_LNG = -62.4994;
+/** Origen fijo: planta de San Ramón, Santa Cruz, Bolivia. */
+const ORIGEN = Object.freeze({
+  nombre: 'Planta Ensilados Santa Cruz – San Ramón',
+  lat: -16.6133,
+  lng: -62.4994,
+});
 
-// ------------------------------------------------------------
-// Parámetros tarifarios (ajustables por la empresa)
-// ------------------------------------------------------------
-const TARIFA_BASE_BS = 350;   // Bs. – Costo mínimo fijo por viaje
-const PRECIO_KM_BS   = 12;    // Bs. – Costo adicional por kilómetro recorrido
-const FACTOR_CORRECCION_RURAL = 1.25; // Ajuste Haversine → ruta real estimada
+/** Parámetros por defecto (modificables por el Superadmin en la tabla parametros_flete). */
+const PARAMETROS_POR_DEFECTO = Object.freeze({
+  tarifa_base_bs: 350,
+  precio_km_bs: 12,
+  factor_correccion_rural: 1.25,
+  capacidad_vehiculo_tons: 30,
+  peso_minimo_tons: 0.5,
+  pct_costo_mercaderia: 0.6,
+  pct_costo_logistico: 0.7,
+});
 
-// Peso mínimo aceptable para despacho (en Toneladas Métricas)
-const PESO_MINIMO_TONS = 0.5;
+const redondear = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-/**
- * Calcula la distancia en línea recta entre dos coordenadas
- * usando la fórmula de Haversine.
- *
- * @param {number} lat1 - Latitud del punto origen
- * @param {number} lon1 - Longitud del punto origen
- * @param {number} lat2 - Latitud del punto destino
- * @param {number} lon2 - Longitud del punto destino
- * @returns {number} Distancia en kilómetros (línea recta)
- */
+/** Distancia en línea recta (círculo máximo) entre dos coordenadas, en km. */
 function calcularDistanciaHaversine(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radio medio de la Tierra en kilómetros
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-
+  const R = 6371; // radio medio de la Tierra (km)
+  const aRad = (g) => (g * Math.PI) / 180;
+  const dLat = aRad(lat2 - lat1);
+  const dLon = aRad(lon2 - lon1);
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-    Math.cos(lat2 * (Math.PI / 180)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Kilómetros en línea recta
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(aRad(lat1)) * Math.cos(aRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Calcula el costo adicional de flete según los productos del pedido.
- * Cada producto tiene un `factor_flete` que refleja su densidad
- * y dificultad logística de transporte.
- *
- * @param {Array<{quantity_tons: number, factor_flete: number}>} items
- * @returns {number} Costo adicional por factores de producto (Bs.)
- */
+/** Σ (toneladas × factor_flete). El factor por defecto es 1.0. */
 function calcularFactorProducto(items = []) {
-  if (!Array.isArray(items) || items.length === 0) return 0;
-
-  return items.reduce((acumulado, item) => {
-    const toneladas = parseFloat(item.quantity_tons) || 0;
-    const factor    = parseFloat(item.factor_flete)  || 1.0;
-    return acumulado + (toneladas * factor);
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((acc, item) => {
+    const toneladas = parseFloat(item.cantidad_tons) || 0;
+    const factor = parseFloat(item.factor_flete);
+    return acc + toneladas * (Number.isFinite(factor) && factor > 0 ? factor : 1);
   }, 0);
 }
 
-/**
- * FUNCIÓN PRINCIPAL – Calcula el costo completo del flete.
- *
- * Recibe la distancia (obtenida por Google Maps o calculada por
- * Haversine) y devuelve el desglose completo del costo logístico.
- *
- * @param {number} destLat         - Latitud del punto de entrega del cliente
- * @param {number} destLng         - Longitud del punto de entrega del cliente
- * @param {number} distanciaKm     - Distancia en km (0 si no fue calculada aún)
- * @param {string} fuenteCalculo   - 'google' | 'haversine'
- * @param {Array}  items           - Ítems del carrito con quantity_tons y factor_flete
- *
- * @returns {Object} Resultado completo del cálculo del flete
- */
-function calcularCostoFlete(
-  destLat,
-  destLng,
-  distanciaKm   = 0,
-  fuenteCalculo = 'haversine',
-  items         = []
-) {
-  // 1. Determinar distancia final a usar
-  let distanciaFinal = parseFloat(distanciaKm);
+function calcularPesoTotal(items = []) {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((acc, item) => acc + (parseFloat(item.cantidad_tons) || 0), 0);
+}
 
-  if (fuenteCalculo === 'haversine' || !distanciaFinal || distanciaFinal <= 0) {
-    // Contingencia: Haversine con factor de corrección para rutas rurales
-    const distanciaLineal = calcularDistanciaHaversine(
-      ORIGEN_LAT, ORIGEN_LNG,
-      parseFloat(destLat), parseFloat(destLng)
-    );
-    distanciaFinal = distanciaLineal * FACTOR_CORRECCION_RURAL;
-    fuenteCalculo  = 'haversine';
+/**
+ * @param {object} p                       Parámetros tarifarios (ver PARAMETROS_POR_DEFECTO)
+ * @param {object} entrada
+ * @param {number} entrada.destLat
+ * @param {number} entrada.destLng
+ * @param {number} [entrada.distanciaKm]   Distancia de ruta (Google). Si es 0/nula se usa Haversine.
+ * @param {string} [entrada.fuente]        'google' | 'haversine'
+ * @param {Array}  [entrada.items]         [{ cantidad_tons, factor_flete }]
+ */
+function calcularCostoFlete(p, { destLat, destLng, distanciaKm = 0, fuente = 'haversine', items = [] }) {
+  const params = { ...PARAMETROS_POR_DEFECTO, ...(p || {}) };
+
+  let distancia = parseFloat(distanciaKm);
+  let fuenteFinal = fuente;
+  if (fuente !== 'google' || !Number.isFinite(distancia) || distancia <= 0) {
+    const lineal = calcularDistanciaHaversine(ORIGEN.lat, ORIGEN.lng, parseFloat(destLat), parseFloat(destLng));
+    distancia = lineal * params.factor_correccion_rural;
+    fuenteFinal = 'haversine';
   }
 
-  // 2. Calcular el factor adicional de producto
+  const pesoTotal = calcularPesoTotal(items);
+  const viajes = pesoTotal > 0 ? Math.max(1, Math.ceil(pesoTotal / params.capacidad_vehiculo_tons)) : 1;
+
+  const costoViaje = params.tarifa_base_bs + distancia * params.precio_km_bs;
+  const costoTransporte = viajes * costoViaje;
   const costoFactor = calcularFactorProducto(items);
+  const costoFlete = costoTransporte + costoFactor;
 
-  // 3. Aplicar la fórmula principal del algoritmo de flete
-  //    Flete = Tarifa_Base + (Distancia × Precio_km) + Factor_Producto
-  const costoFlete = TARIFA_BASE_BS + (distanciaFinal * PRECIO_KM_BS) + costoFactor;
-
-  // 4. Retornar el resultado completo con desglose para transparencia
   return {
-    // Puntos geográficos involucrados
-    origen: {
-      nombre: 'Planta Ensilados Santa Cruz – San Ramón',
-      lat: ORIGEN_LAT,
-      lng: ORIGEN_LNG
-    },
+    origen: { ...ORIGEN },
     destino: {
       lat: parseFloat(parseFloat(destLat).toFixed(7)),
-      lng: parseFloat(parseFloat(destLng).toFixed(7))
+      lng: parseFloat(parseFloat(destLng).toFixed(7)),
     },
-
-    // Resultado del cálculo de distancia
-    distancia_km:     parseFloat(distanciaFinal.toFixed(2)),
-    fuente_calculo:   fuenteCalculo,  // 'google' | 'haversine'
-
-    // Desglose tarifario (para mostrar al cliente y para la tesis)
-    tarifa_base_bs:   TARIFA_BASE_BS,
-    precio_km_bs:     PRECIO_KM_BS,
-    costo_factor_bs:  parseFloat(costoFactor.toFixed(2)),
-
-    // Resultado final
-    costo_flete_bs:   parseFloat(costoFlete.toFixed(2)),
+    distancia_km: redondear(distancia),
+    fuente_calculo: fuenteFinal,
+    peso_total_tons: redondear(pesoTotal),
+    viajes,
+    capacidad_vehiculo_tons: params.capacidad_vehiculo_tons,
+    tarifa_base_bs: params.tarifa_base_bs,
+    precio_km_bs: params.precio_km_bs,
+    costo_viaje_bs: redondear(costoViaje),
+    costo_transporte_bs: redondear(costoTransporte),
+    costo_factor_bs: redondear(costoFactor),
+    costo_flete_bs: redondear(costoFlete),
   };
 }
 
-// Exportar constantes y funciones del módulo
+/**
+ * Indicadores financieros estimados de un pedido (HU09).
+ * Debe coincidir con el trigger fn_calcular_financieros de la base de datos.
+ */
+function calcularFinancieros({ subtotal_bs, costo_flete_bs, total_bs }, p = {}) {
+  const params = { ...PARAMETROS_POR_DEFECTO, ...p };
+  const costoMercaderia = redondear(subtotal_bs * params.pct_costo_mercaderia);
+  const costoLogistico = redondear(costo_flete_bs * params.pct_costo_logistico);
+  return {
+    costo_mercaderia_bs: costoMercaderia,
+    costo_logistico_bs: costoLogistico,
+    ganancia_neta_bs: redondear(total_bs - costoMercaderia - costoLogistico),
+  };
+}
+
 module.exports = {
-  ORIGEN_LAT,
-  ORIGEN_LNG,
-  TARIFA_BASE_BS,
-  PRECIO_KM_BS,
-  PESO_MINIMO_TONS,
+  ORIGEN,
+  PARAMETROS_POR_DEFECTO,
+  redondear,
   calcularDistanciaHaversine,
   calcularFactorProducto,
+  calcularPesoTotal,
   calcularCostoFlete,
+  calcularFinancieros,
 };
