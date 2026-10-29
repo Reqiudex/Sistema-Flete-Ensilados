@@ -1,5 +1,5 @@
 /**
- * Repositorio de usuarios administrativos (tabla usuarios) – HU06 y HU10.
+ * Repositorio de usuarios administrativos (tabla usuarios) – HU06.
  * Sin Supabase usa memoria. No existen usuarios ni contraseñas escritos en el código:
  * la cuenta inicial se crea al arrancar el servidor con ADMIN_EMAIL / ADMIN_PASSWORD (ver server.js).
  *

@@ -27,7 +27,7 @@ COMMENT ON TABLE  productos IS 'Catálogo de productos ensilados (HU02, HU07). "
 COMMENT ON COLUMN productos.factor_flete IS 'Multiplicador logístico: aporta toneladas × factor al costo de flete.';
 
 -- ------------------------------------------------------------
--- usuarios (HU06, HU10)
+-- usuarios (HU06)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuarios (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 COMMENT ON TABLE usuarios IS 'Personal administrativo. Los clientes son anónimos (HU03).';
 
 -- ------------------------------------------------------------
--- parametros_flete (HU05, HU11): fila única editable por el Superadmin
+-- parametros_flete (HU05): fila única editable por el Superadmin
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS parametros_flete (
     id                      INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
