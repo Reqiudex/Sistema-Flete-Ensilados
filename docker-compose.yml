@@ -7,22 +7,37 @@ services:
       dockerfile: Dockerfile
     container_name: ensilados-backend
     ports:
-      - "3001:3001"
+      - "3002:3001"
     environment:
       - PORT=3001
-      - JWT_SECRET=ensilados-santa-cruz-jwt-secret-2024
+      - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_MAPS_API_KEY=
-    env_file:
-      - ./backend/.env
+      - SUPABASE_URL=http://supabase-kong-bx4ixq11kl7vwnrall5bdty0:8000
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - coolify
+      - default
     restart: always
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_SUPABASE_URL=https://supabase.cherry.lat
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        - VITE_API_URL=/api
     container_name: ensilados-frontend
     ports:
-      - "3000:80"
+      - "8087:80"
     depends_on:
       - backend
+    networks:
+      - default
     restart: always
+
+networks:
+  coolify:
+    external: true

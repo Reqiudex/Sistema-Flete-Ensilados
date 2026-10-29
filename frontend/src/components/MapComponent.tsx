@@ -147,9 +147,11 @@ export default function MapComponent({
   const calculateFlete = async (lat: number, lng: number) => {
     onCalculationStateChange(true);
     try {
-      // Determinamos URL del backend dinámicamente
-      const host = window.location.hostname;
-      const apiEndpoint = `http://${host}:3001/api/calculate-flete`;
+      const apiEndpoint = import.meta.env.VITE_API_URL 
+        ? `${import.meta.env.VITE_API_URL}/calculate-flete`
+        : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? `http://${window.location.hostname}:3001/api/calculate-flete`
+            : '/api/calculate-flete');
 
       const response = await fetch(apiEndpoint, {
         method: 'POST',

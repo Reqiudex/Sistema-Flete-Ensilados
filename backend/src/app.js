@@ -16,6 +16,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Ensilados Santa Cruz API (MVC)', time: new Date() });
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', service: 'Ensilados Santa Cruz API (MVC)', time: new Date() });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);

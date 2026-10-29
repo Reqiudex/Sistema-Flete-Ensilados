@@ -23,9 +23,10 @@ interface AdminDashboardProps {
   addToast: (toast: any) => void;
 }
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-  ? 'http://localhost:3001/api' 
-  : 'https://api.tesis.cherry.lat/api';
+const API_BASE = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+    ? 'http://localhost:3001/api' 
+    : '/api');
 
 const PRODUCT_COLORS = ['#2d6a4f', '#7dd0a3', '#b0e6c5', '#1b4332'];
 const PROFIT_COLORS = ['#2d6a4f', '#ef4444', '#d4a217']; // Green (Profit), Red (Materials Cost), Yellow (Logistics Cost)
@@ -1773,7 +1774,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 paddingAngle={5}
                 dataKey="value"
               >
-                {stats.gainLossData.map((entry, index) => (
+                {stats.gainLossData.map((_entry, index) => (
                   <Cell key={`cell-${index}`} fill={PROFIT_COLORS[index % PROFIT_COLORS.length]} />
                 ))}
               </Pie>
@@ -1790,7 +1791,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 paddingAngle={5}
                 dataKey="value"
               >
-                {stats.salesByProductData.map((entry, index) => (
+                {stats.salesByProductData.map((_entry, index) => (
                   <Cell key={`cell-${index}`} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
                 ))}
               </Pie>
