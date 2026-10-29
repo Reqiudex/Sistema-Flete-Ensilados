@@ -25,6 +25,7 @@ Arquitectura: **un solo dominio web** (frontend + proxy `/api` hacia el backend)
 | `JWT_SECRET` | texto aleatorio de 32+ caracteres (`openssl rand -hex 32`) |
 | `SUPABASE_URL` | `https://dbtesis.cerice360.com` |
 | `SUPABASE_SERVICE_ROLE_KEY` | clave service_role del paso 1.6 (solo backend) |
+| `SUPABASE_SCHEMA` | (opcional) esquema de las tablas; `public` por defecto. Use `tesis` si comparte Supabase con otros proyectos: cree el esquema, ejecute `schema.sql` con `SET search_path = tesis` y agréguelo a `PGRST_DB_SCHEMAS` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Superadmin inicial (cámbiela tras el primer ingreso) |
 | `CORS_ORIGINS` | `https://tesis.cherry.lat` |
 | `GOOGLE_MAPS_API_KEY` | (opcional) Distance Matrix; sin clave se usa Haversine × 1,25 |

@@ -23,7 +23,9 @@ function getSupabase() {
   }
 
   const { createClient } = require('@supabase/supabase-js');
-  cliente = createClient(url, key, { auth: { persistSession: false } });
+  // SUPABASE_SCHEMA permite aislar las tablas en un esquema propio dentro de un Supabase compartido.
+  const schema = (process.env.SUPABASE_SCHEMA || 'public').trim();
+  cliente = createClient(url, key, { auth: { persistSession: false }, db: { schema } });
   return cliente;
 }
 

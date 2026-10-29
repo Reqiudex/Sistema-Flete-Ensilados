@@ -15,6 +15,7 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       SUPABASE_URL: ${SUPABASE_URL:?Defina SUPABASE_URL (https://dbtesis.cerice360.com)}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Defina SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-public}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?Defina ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Defina ADMIN_PASSWORD (mínimo 8 caracteres)}
@@ -35,4 +36,6 @@ services:
         condition: service_healthy
     expose:
       - "80"
+    ports:
+      - "${WEB_PORT:-8091}:80"   # publicado para el túnel de Cloudflare
     restart: unless-stopped
