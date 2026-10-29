@@ -5,7 +5,7 @@ export interface Product {
   unit_price_ton: number;
   stock_tons: number;
   factor_flete: number;
-  created_at?: string;
+  active?: boolean;
 }
 
 export interface CartItem {
@@ -19,8 +19,11 @@ export interface OrderItem {
   product_id: string;
   quantity_tons: number;
   subtotal: number;
-  product?: Product;
+  product?: Pick<Product, 'id' | 'name'> & Partial<Product>;
 }
+
+export type OrderStatus = 'Pendiente' | 'En Camino' | 'Entregado' | 'Cancelado';
+export type PaymentMethod = 'QR' | 'Transferencia' | 'WhatsApp';
 
 export interface Order {
   id?: string;
@@ -29,27 +32,54 @@ export interface Order {
   customer_phone: string;
   lat: number;
   lng: number;
+  distance_km?: number;
+  calculation_source?: 'google' | 'haversine';
+  trips?: number;
   total_weight_tons: number;
   shipping_cost: number;
   total_amount: number;
   cost_items_bs?: number;
   cost_logistics_bs?: number;
   net_profit_bs?: number;
-  payment_method: 'QR' | 'Transferencia' | 'WhatsApp';
-  status: 'Pendiente' | 'En Camino' | 'Entregado';
+  payment_method: PaymentMethod;
+  status: OrderStatus;
   created_at?: string;
   items?: OrderItem[];
+  /** true cuando el pedido se guardó sin conexión y aún no llegó al servidor */
+  pending_sync?: boolean;
 }
 
-export interface FleteResult {
-  origin: { lat: number; lng: number };
-  destination: { lat: number; lng: number };
+/** Datos mínimos que el cliente envía; el servidor calcula precios, flete y totales. */
+export interface NewOrderPayload {
+  customerName: string;
+  customerPhone: string;
+  lat: number;
+  lng: number;
+  paymentMethod: PaymentMethod;
+}
+
+/** Cotización de flete (respuesta de /api/calculate-flete o cálculo local de contingencia). */
+export interface FleteQuote {
   distance_km: number;
-  calculation_source: 'google' | 'haversine';
-  tarife_base: number;
-  precio_km: number;
-  product_factor_cost: number;
+  source: 'google' | 'haversine';
+  trips: number;
   shipping_cost: number;
+  subtotal?: number;
+  total?: number;
+  /** true cuando se calculó en el navegador por falta de conexión */
+  estimated_offline?: boolean;
+}
+
+/** Parámetros tarifarios vigentes (GET /api/flete-params). */
+export interface FleteParams {
+  origen: { nombre: string; lat: number; lng: number };
+  tarifa_base_bs: number;
+  precio_km_bs: number;
+  factor_correccion_rural: number;
+  capacidad_vehiculo_tons: number;
+  peso_minimo_tons: number;
+  pct_costo_mercaderia: number;
+  pct_costo_logistico: number;
 }
 
 export type UserRole = 'Admin' | 'Superadmin';
@@ -60,33 +90,6 @@ export interface UserProfile {
   role: UserRole;
   two_factor_enabled: boolean;
   created_at?: string;
-}
-
-export interface AuthState {
-  isAuthenticated: boolean;
-  user: UserProfile | null;
-  token: string | null;
-}
-
-export interface FinancialStats {
-  totals: {
-    revenue: number;
-    cost_items: number;
-    cost_logistics: number;
-    net_profit: number;
-    total_tons: number;
-    profit_margin_pct: number;
-  };
-  orders: {
-    total: number;
-    delivered: number;
-    pending: number;
-    in_route: number;
-  };
-  charts: {
-    monthly: Array<{ month: string; ingresos: number; costos: number; ganancia: number; toneladas: number }>;
-    by_product: Array<{ name: string; value: number }>;
-  };
 }
 
 export interface Toast {

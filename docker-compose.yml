@@ -1,28 +1,35 @@
-version: '3.8'
-
+# Ensilados Santa Cruz – despliegue con Docker
+# Uso:  cp .env.example .env   (completar valores)   y luego   docker compose up -d --build
 services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
     container_name: ensilados-backend
     ports:
       - "3001:3001"
     environment:
-      - PORT=3001
-      - JWT_SECRET=ensilados-santa-cruz-jwt-secret-2024
-      - GOOGLE_MAPS_API_KEY=
-    env_file:
-      - ./backend/.env
-    restart: always
+      PORT: 3001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (mínimo 32 caracteres) en el archivo .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://tesis.cherry.lat}
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      args:
+        # Se incorporan al compilar la aplicación (no son secretos: la clave de Maps debe restringirse por dominio)
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     container_name: ensilados-frontend
     ports:
       - "3000:80"
     depends_on:
       - backend
-    restart: always
+    restart: unless-stopped

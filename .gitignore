@@ -31,3 +31,7 @@ build/
 # Docker logs
 *.log
 docker-compose.override.yml
+
+# Copias de seguridad / temporales
+*.bak
+.claude/

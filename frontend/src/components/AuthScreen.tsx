@@ -1,18 +1,15 @@
 import { useState } from 'react';
 import {
-  Mail, Lock, Eye, EyeOff, Sprout, Shield, Chrome, Facebook,
-  ArrowRight, Loader2, CheckCircle2, Key, Wheat, Leaf, Tractor, Sun
+  Mail, Lock, Eye, EyeOff, Sprout, Shield,
+  ArrowRight, Loader2, CheckCircle2, Wheat, Leaf, Tractor, Sun
 } from 'lucide-react';
 import { UserProfile, Toast } from '../types';
+import { ApiError, iniciarSesion, verificar2FA, mensajeError } from '../api';
 
 interface AuthScreenProps {
   onLogin: (user: UserProfile, token: string) => void;
   addToast: (toast: Omit<Toast, 'id'>) => void;
 }
-
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-  ? 'http://localhost:3001/api' 
-  : 'https://api.tesis.cherry.lat/api';
 
 export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
   const [email, setEmail] = useState('');
@@ -21,61 +18,27 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'login' | '2fa'>('login');
   const [twoFACode, setTwoFACode] = useState('');
-  const [pendingEmail, setPendingEmail] = useState('');
+  const [preAuthToken, setPreAuthToken] = useState('');
   const [twoFALoading, setTwoFALoading] = useState(false);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-
-      if (data.requires_2fa) {
-        setPendingEmail(email);
+      const r = await iniciarSesion(email.trim(), password);
+      if (r.requiere2fa) {
+        setPreAuthToken(r.tokenPreauth);
+        setPassword('');
         setStep('2fa');
         addToast({ type: 'info', title: 'Doble Factor Requerido', message: 'Ingrese el código de 6 dígitos de su aplicación autenticadora.' });
         return;
       }
-
-      if (!res.ok) {
-        addToast({ type: 'error', title: 'Error de Acceso', message: data.error || 'Credenciales inválidas.' });
-        return;
-      }
-
-      addToast({ type: 'success', title: '¡Bienvenido!', message: `Sesión iniciada como ${data.user.role}.` });
-      onLogin(data.user, data.token);
-    } catch (_err) {
-      // Offline/demo mode fallback
-      handleDemoLogin(email, password);
+      addToast({ type: 'success', title: '¡Bienvenido!', message: `Sesión iniciada como ${r.usuario.role}.` });
+      onLogin(r.usuario, r.token);
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error de Acceso', message: mensajeError(err, 'No se pudo iniciar sesión.') });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = (em: string, pw: string) => {
-    const demoAccounts: Record<string, { role: 'Admin' | 'Superadmin'; pw: string }> = {
-      'superadmin@ensilados.com': { role: 'Superadmin', pw: 'superadmin123' },
-      'admin@ensilados.com':      { role: 'Admin',      pw: 'admin123' },
-    };
-    const account = demoAccounts[em.toLowerCase()];
-    if (account && account.pw === pw) {
-      const mockUser: UserProfile = {
-        id: em === 'superadmin@ensilados.com' ? '1' : '2',
-        email: em, role: account.role, two_factor_enabled: false
-      };
-      const mockToken = btoa(JSON.stringify(mockUser) + ':demo');
-      addToast({ type: 'success', title: 'Acceso Demo', message: `Sesión iniciada como ${account.role} (modo offline).` });
-      onLogin(mockUser, mockToken);
-    } else {
-      addToast({
-        type: 'error', title: 'Error de Acceso',
-        message: 'Credenciales inválidas. Demo: superadmin@ensilados.com / superadmin123'
-      });
     }
   };
 
@@ -83,33 +46,18 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
     e.preventDefault();
     setTwoFALoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/verify-2fa`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: pendingEmail, totp_code: twoFACode })
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        addToast({ type: 'error', title: 'Código Inválido', message: data.error || 'Código 2FA incorrecto.' });
-        return;
-      }
-
+      const r = await verificar2FA(preAuthToken, twoFACode);
       addToast({ type: 'success', title: 'Verificado', message: 'Autenticación de doble factor correcta.' });
-      onLogin(data.user, data.token);
-    } catch (_err) {
-      addToast({ type: 'error', title: 'Error', message: 'No se pudo conectar con el servidor.' });
+      onLogin(r.usuario, r.token);
+    } catch (err) {
+      addToast({ type: 'error', title: 'Código Inválido', message: mensajeError(err, 'No se pudo verificar el código.') });
+      if (err instanceof ApiError && err.code === 'PREAUTH_INVALIDO') {
+        setStep('login');
+        setTwoFACode('');
+      }
     } finally {
       setTwoFALoading(false);
     }
-  };
-
-  const handleSocialAuth = (provider: 'google' | 'facebook') => {
-    addToast({
-      type: 'info',
-      title: `${provider === 'google' ? 'Google' : 'Facebook'} OAuth`,
-      message: 'Configure las credenciales de OAuth en Supabase para habilitar el inicio de sesión social.'
-    });
   };
 
   return (
@@ -161,37 +109,6 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                 Iniciar Sesión
               </h2>
 
-              {/* Demo Credentials hint */}
-              <div className="mb-5 p-3 bg-gold-500/10 border border-gold-500/20 rounded-xl text-xs text-gold-300">
-                <p className="font-bold mb-1 flex items-center gap-1.5"><Key className="h-4 w-4" /> Credenciales Demo:</p>
-                <p>Superadmin: <span className="text-white font-mono">superadmin@ensilados.com</span> / <span className="text-white font-mono">superadmin123</span></p>
-                <p>Admin: <span className="text-white font-mono">admin@ensilados.com</span> / <span className="text-white font-mono">admin123</span></p>
-              </div>
-
-              {/* Social login buttons */}
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                <button
-                  onClick={() => handleSocialAuth('google')}
-                  className="flex items-center justify-center gap-2 glass py-2.5 px-4 rounded-xl text-sm font-semibold text-white hover:bg-white/10 transition-all hover:scale-[1.02]"
-                >
-                  <Chrome className="h-4 w-4 text-red-400" />
-                  Google
-                </button>
-                <button
-                  onClick={() => handleSocialAuth('facebook')}
-                  className="flex items-center justify-center gap-2 glass py-2.5 px-4 rounded-xl text-sm font-semibold text-white hover:bg-white/10 transition-all hover:scale-[1.02]"
-                >
-                  <Facebook className="h-4 w-4 text-blue-400" />
-                  Facebook
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3 mb-5">
-                <div className="flex-1 h-px bg-dark-600" />
-                <span className="text-dark-400 text-xs font-medium">o con correo</span>
-                <div className="flex-1 h-px bg-dark-600" />
-              </div>
-
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 {/* Email */}
                 <div>
@@ -205,7 +122,8 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
-                      placeholder="admin@ensilados.com"
+                      placeholder="correo@empresa.com"
+                      autoComplete="username"
                       className="w-full pl-10 pr-4 py-3 bg-dark-800 border border-dark-600 focus:border-agro-500 rounded-xl text-white text-sm placeholder-dark-500 focus:outline-none focus:ring-1 focus:ring-agro-500 transition-all"
                     />
                   </div>
@@ -224,6 +142,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                       onChange={e => setPassword(e.target.value)}
                       required
                       placeholder="••••••••"
+                      autoComplete="current-password"
                       className="w-full pl-10 pr-12 py-3 bg-dark-800 border border-dark-600 focus:border-agro-500 rounded-xl text-white text-sm placeholder-dark-500 focus:outline-none focus:ring-1 focus:ring-agro-500 transition-all"
                     />
                     <button
@@ -263,7 +182,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                   <h2 className="text-lg font-display font-bold text-white">
                     Verificación 2FA
                   </h2>
-                  <p className="text-xs text-dark-400">{pendingEmail}</p>
+                  <p className="text-xs text-dark-400">Segundo paso de acceso</p>
                 </div>
               </div>
 

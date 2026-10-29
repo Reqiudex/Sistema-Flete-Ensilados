@@ -165,9 +165,13 @@ export default function Confirmation({ order, onBackToStart }: ConfirmationProps
           <div className="mx-auto w-16 h-16 bg-white/10 rounded-full flex items-center justify-center shadow-inner">
             <CheckCircle2 className="h-10 w-10 text-agro-accent animate-bounce" />
           </div>
-          <h2 className="text-3xl font-extrabold tracking-wide">¡Pedido Registrado con Éxito!</h2>
+          <h2 className="text-3xl font-extrabold tracking-wide">
+            {order.pending_sync ? 'Pedido Guardado en su Dispositivo' : '¡Pedido Registrado con Éxito!'}
+          </h2>
           <p className="text-agro-100 text-sm max-w-md mx-auto">
-            Su cotización logística ha sido procesada de manera correcta. El chofer asignado utilizará su ubicación registrada para el despacho.
+            {order.pending_sync
+              ? 'No hay conexión con el servidor. Su pedido se enviará automáticamente cuando vuelva la señal (mantenga esta aplicación abierta o vuelva a abrirla). El flete y el total definitivos los confirma el servidor al enviarlo.'
+              : 'Su cotización logística ha sido procesada de manera correcta. El chofer asignado utilizará su ubicación registrada para el despacho.'}
           </p>
         </div>
 

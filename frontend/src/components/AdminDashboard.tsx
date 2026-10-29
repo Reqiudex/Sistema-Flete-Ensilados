@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -6,38 +6,47 @@ import {
 } from 'recharts';
 import {
   Truck, ArrowUpRight, TrendingUp,
-  Package, DollarSign, Users, PlusCircle, Trash2, Edit2, ShieldAlert,
-  Key, Mail, Save, CheckCircle, QrCode, Lock, RefreshCw, LogOut, Wheat, Sprout, Download, X
+  Package, DollarSign, Users, PlusCircle, Trash2, Edit2,
+  Key, Mail, Save, CheckCircle, Lock, ShieldAlert, RefreshCw, LogOut, Wheat, Sprout, Download, X, Settings
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { Order, Product, UserProfile } from '../types';
-import {
-  supabase, isSupabaseConfigured, getLocalOrders, updateLocalOrderStatus, saveLocalOrder, getLocalProducts
-} from '../supabaseClient';
+import { FleteParams, Order, OrderStatus, PaymentMethod, Product, UserProfile, UserRole } from '../types';
+import * as api from '../api';
 
 interface AdminDashboardProps {
   user: UserProfile;
-  token: string;
   onLogout: () => void;
+  onSessionExpired: () => void;
   addToast: (toast: any) => void;
 }
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-  ? 'http://localhost:3001/api' 
-  : 'https://api.tesis.cherry.lat/api';
-
 const PRODUCT_COLORS = ['#2d6a4f', '#7dd0a3', '#b0e6c5', '#1b4332'];
-const PROFIT_COLORS = ['#2d6a4f', '#ef4444', '#d4a217']; // Green (Profit), Red (Materials Cost), Yellow (Logistics Cost)
+const PROFIT_COLORS = ['#2d6a4f', '#ef4444', '#d4a217']; // Verde (ganancia), rojo (materiales), amarillo (logística)
 
-export default function AdminDashboard({ user, token, onLogout, addToast }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'products' | 'admins' | 'security'>('dashboard');
-  const [dbMode, setDbMode] = useState<string>('Local');
+/** Transiciones de estado válidas (iguales a las del servidor). Entregado y Cancelado son finales. */
+const TRANSICIONES: Record<OrderStatus, OrderStatus[]> = {
+  Pendiente: ['En Camino', 'Entregado', 'Cancelado'],
+  'En Camino': ['Pendiente', 'Entregado', 'Cancelado'],
+  Entregado: [],
+  Cancelado: [],
+};
+const ESTADOS_FILTRO = ['Todos', 'Pendiente', 'En Camino', 'Entregado', 'Cancelado'];
+
+type TabId = 'dashboard' | 'orders' | 'products' | 'admins' | 'params' | 'security';
+
+export default function AdminDashboard({ user, onLogout, onSessionExpired, addToast }: AdminDashboardProps) {
+  const esSuper = user.role === 'Superadmin';
+  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [online, setOnline] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [admins, setAdmins] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Product Form states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -56,164 +65,110 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
   const [adminForm, setAdminForm] = useState({
     email: '',
     password: '',
-    role: 'Admin' as 'Admin' | 'Superadmin'
+    role: 'Admin' as UserRole
   });
 
-  // Manual Order Form states
+  // Manual Order Form states (el servidor calcula el flete a partir de las coordenadas)
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [manualOrderForm, setManualOrderForm] = useState({
     customer_name: '',
     customer_phone: '',
     product_id: '',
     quantity_tons: 10,
-    shipping_cost: 1000,
-    payment_method: 'Transferencia' as 'QR' | 'Transferencia' | 'WhatsApp',
-    lat: -16.6133,
-    lng: -62.4994
+    payment_method: 'Transferencia' as PaymentMethod,
+    lat: -17.75,
+    lng: -63.07
   });
 
-  // Self Account Form state
-  const [selfForm, setSelfForm] = useState({
-    email: user.email,
-    password: ''
-  });
+  // Cambio de contraseña propio
+  const [selfForm, setSelfForm] = useState({ current: '', next: '' });
   const [updatingSelf, setUpdatingSelf] = useState(false);
 
-  // 2FA Setup state
+  // 2FA (TOTP real)
   const [twoFASecret, setTwoFASecret] = useState<string | null>(null);
+  const [twoFAUrl, setTwoFAUrl] = useState<string | null>(null);
   const [twoFACodeInput, setTwoFACodeInput] = useState('');
-  const [twoFAStep, setTwoFAStep] = useState<'none' | 'setup' | 'enabled'>('none');
+  const [twoFAPassword, setTwoFAPassword] = useState('');
+  const [twoFAStep, setTwoFAStep] = useState<'none' | 'setup' | 'enabled'>(user.two_factor_enabled ? 'enabled' : 'none');
   const [twoFALoading, setTwoFALoading] = useState(false);
 
-  // Fetch all initial data
-  useEffect(() => {
-    fetchOrders();
-    fetchProducts();
-    if (user.role === 'Superadmin') {
-      fetchAdmins();
-    }
-    check2FAStatus();
-  }, []);
+  // Parámetros tarifarios (Superadmin)
+  const [params, setParams] = useState<FleteParams | null>(null);
+  const [paramsForm, setParamsForm] = useState<Record<string, string>>({});
 
-  const check2FAStatus = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/auth/profile`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTwoFAStep(data.two_factor_enabled ? 'enabled' : 'none');
-      } else {
-        setTwoFAStep(user.two_factor_enabled ? 'enabled' : 'none');
+  const handleError = useCallback((err: unknown, titulo: string, porDefecto: string) => {
+    if (err instanceof api.ApiError) {
+      if (err.status === 401 && err.code !== 'CREDENCIALES_INVALIDAS') {
+        onSessionExpired();
+        return;
       }
-    } catch {
-      setTwoFAStep(user.two_factor_enabled ? 'enabled' : 'none');
+      if (err.isNetwork) setOnline(false);
     }
-  };
+    addToast({ type: 'error', title: titulo, message: api.mensajeError(err, porDefecto) });
+  }, [addToast, onSessionExpired]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      if (isSupabaseConfigured && supabase) {
-        setDbMode('Supabase');
-        const { data, error } = await supabase
-          .from('orders')
-          .select(`
-            *,
-            items:order_items(
-              *,
-              product:products(*)
-            )
-          `)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setOrders(data || []);
-      } else {
-        setDbMode('Local (Demo)');
-        setOrders(getLocalOrders());
-      }
+      setOrders(await api.admin.pedidos({ desde: dateFrom || undefined, hasta: dateTo || undefined }));
+      setOnline(true);
     } catch (err) {
-      console.error('Error al cargar pedidos:', err);
-      setOrders(getLocalOrders());
+      handleError(err, 'Error', 'No se pudieron cargar los pedidos.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateFrom, dateTo, handleError]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .order('name');
-        if (error) throw error;
-        setProducts(data || []);
-      } else {
-        setProducts(getLocalProducts());
-      }
+      setProducts(await api.admin.productos());
     } catch (err) {
-      console.error('Error cargando productos:', err);
-      setProducts(getLocalProducts());
+      handleError(err, 'Error', 'No se pudieron cargar los productos.');
     }
-  };
+  }, [handleError]);
 
-  const fetchAdmins = async () => {
+  const fetchAdmins = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      setAdmins(await api.admin.usuarios());
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudieron cargar los administradores.');
+    }
+  }, [handleError]);
+
+  const fetchParams = useCallback(async () => {
+    try {
+      const p = await api.admin.parametros();
+      setParams(p);
+      setParamsForm({
+        tarifa_base_bs: String(p.tarifa_base_bs),
+        precio_km_bs: String(p.precio_km_bs),
+        factor_correccion_rural: String(p.factor_correccion_rural),
+        capacidad_vehiculo_tons: String(p.capacidad_vehiculo_tons),
+        peso_minimo_tons: String(p.peso_minimo_tons),
+        pct_costo_mercaderia: String(p.pct_costo_mercaderia),
+        pct_costo_logistico: String(p.pct_costo_logistico),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAdmins(data.data || []);
-      } else {
-        // Mock offline fallback
-        setAdmins([
-          { id: '1', email: 'superadmin@ensilados.com', role: 'Superadmin', two_factor_enabled: false },
-          { id: '2', email: 'admin@ensilados.com', role: 'Admin', two_factor_enabled: false }
-        ]);
-      }
     } catch (err) {
-      console.error('Error cargando administradores:', err);
-      setAdmins([
-        { id: '1', email: 'superadmin@ensilados.com', role: 'Superadmin', two_factor_enabled: false },
-        { id: '2', email: 'admin@ensilados.com', role: 'Admin', two_factor_enabled: false }
-      ]);
+      handleError(err, 'Error', 'No se pudieron cargar los parámetros de flete.');
     }
-  };
+  }, [handleError]);
 
-  // Status adjustment
-  const handleStatusChange = async (orderId: string, newStatus: 'Pendiente' | 'En Camino' | 'Entregado') => {
-    try {
-      if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase
-          .from('orders')
-          .update({ status: newStatus })
-          .eq('id', orderId);
-        if (error) throw error;
-        addToast({ type: 'success', title: 'Estado Actualizado', message: `Pedido cambiado a ${newStatus}.` });
-        fetchOrders();
-      } else {
-        updateLocalOrderStatus(orderId, newStatus);
-        addToast({ type: 'success', title: 'Estado Actualizado', message: `Pedido cambiado a ${newStatus} (modo local).` });
-        fetchOrders();
-      }
-    } catch (err) {
-      addToast({ type: 'error', title: 'Error', message: 'No se pudo actualizar el estado del pedido.' });
-    }
-  };
+  useEffect(() => { fetchProducts(); if (esSuper) { fetchAdmins(); fetchParams(); } }, [esSuper, fetchProducts, fetchAdmins, fetchParams]);
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  // Order Deletion
-  const handleDeleteOrder = (orderId: string) => {
-    if (!window.confirm('¿Está seguro de eliminar este pedido?')) return;
+  const refreshAll = () => { fetchOrders(); fetchProducts(); if (esSuper) { fetchAdmins(); fetchParams(); } };
+
+  // Cambio de estado (el servidor valida la transición, repone stock al cancelar y registra el historial)
+  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    if (newStatus === 'Cancelado' && !window.confirm('¿Cancelar este pedido? Se devolverá el stock a inventario y no podrá reactivarse.')) return;
     try {
-      const stored = getLocalOrders().filter((o: any) => o.id !== orderId);
-      localStorage.setItem('esc_orders', JSON.stringify(stored));
-      addToast({ type: 'success', title: 'Pedido Eliminado', message: 'El pedido fue retirado del sistema.' });
+      await api.admin.cambiarEstado(orderId, newStatus);
+      addToast({ type: 'success', title: 'Estado Actualizado', message: `Pedido cambiado a ${newStatus}.` });
       fetchOrders();
-    } catch {
-      addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el pedido.' });
+      if (newStatus === 'Cancelado') fetchProducts();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo actualizar el estado del pedido.');
+      fetchOrders();
     }
   };
 
@@ -221,35 +176,17 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingProduct) {
-        const updated = { ...editingProduct, ...productForm };
-        if (isSupabaseConfigured && supabase) {
-          const { error } = await supabase.from('products').update(productForm).eq('id', editingProduct.id);
-          if (error) throw error;
-        } else {
-          const prods = getLocalProducts().map((p: Product) => p.id === editingProduct.id ? updated : p);
-          localStorage.setItem('esc_products', JSON.stringify(prods));
-        }
-        addToast({ type: 'success', title: 'Producto Modificado', message: `Producto '${productForm.name}' actualizado.` });
-      } else {
-        const newProd: Product = {
-          id: `prod-${Date.now()}`,
-          ...productForm
-        };
-        if (isSupabaseConfigured && supabase) {
-          const { error } = await supabase.from('products').insert([productForm]);
-          if (error) throw error;
-        } else {
-          const prods = [...getLocalProducts(), newProd];
-          localStorage.setItem('esc_products', JSON.stringify(prods));
-        }
-        addToast({ type: 'success', title: 'Producto Registrado', message: `Producto '${productForm.name}' guardado.` });
-      }
+      await api.admin.guardarProducto(editingProduct ? editingProduct.id : null, productForm);
+      addToast({
+        type: 'success',
+        title: editingProduct ? 'Producto Modificado' : 'Producto Registrado',
+        message: `Producto '${productForm.name}' guardado.`
+      });
       setShowProductModal(false);
       setEditingProduct(null);
       fetchProducts();
     } catch (err) {
-      addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el producto.' });
+      handleError(err, 'Error', 'No se pudo guardar el producto.');
     }
   };
 
@@ -265,75 +202,53 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
     setShowProductModal(true);
   };
 
-  const handleDeleteProduct = (prodId: string) => {
-    if (!window.confirm('¿Está seguro de eliminar este producto?')) return;
+  // "Eliminar" = desactivar: los pedidos históricos conservan el producto
+  const handleDeleteProduct = async (prodId: string) => {
+    if (!window.confirm('¿Desactivar este producto? Dejará de mostrarse en el catálogo (los pedidos anteriores se conservan).')) return;
     try {
-      if (isSupabaseConfigured && supabase) {
-        // Delete in Supabase
-        addToast({ type: 'info', title: 'Supabase', message: 'Elimine el producto directamente en la consola para evitar fallos de integridad.' });
-      } else {
-        const prods = getLocalProducts().filter((p: Product) => p.id !== prodId);
-        localStorage.setItem('esc_products', JSON.stringify(prods));
-        addToast({ type: 'success', title: 'Producto Eliminado', message: 'El producto fue removido localmente.' });
-        fetchProducts();
-      }
-    } catch {
-      addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el producto.' });
+      await api.admin.desactivarProducto(prodId);
+      addToast({ type: 'success', title: 'Producto Desactivado', message: 'Ya no aparece en el catálogo público.' });
+      fetchProducts();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo desactivar el producto.');
     }
   };
 
-  // Admin CRUD Handlers
+  const handleReactivateProduct = async (prod: Product) => {
+    try {
+      await api.admin.guardarProducto(prod.id, { ...prod, active: true });
+      addToast({ type: 'success', title: 'Producto Reactivado', message: `'${prod.name}' vuelve a mostrarse en el catálogo.` });
+      fetchProducts();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo reactivar el producto.');
+    }
+  };
+
+  // Admin CRUD Handlers (solo Superadmin)
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingAdmin) {
-        // Modify existing
-        const res = await fetch(`${API_BASE}/admin/users/${editingAdmin.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            email: adminForm.email,
-            password: adminForm.password || undefined,
-            role: adminForm.role
-          })
+        await api.admin.actualizarUsuario(editingAdmin.id, {
+          rol: adminForm.role,
+          password: adminForm.password || undefined
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        addToast({ type: 'success', title: 'Administrador Actualizado', message: `Se actualizó el perfil de ${adminForm.email}.` });
+        addToast({ type: 'success', title: 'Administrador Actualizado', message: `Se actualizó el perfil de ${editingAdmin.email}.` });
       } else {
-        // Create new
-        const res = await fetch(`${API_BASE}/admin/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(adminForm)
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
+        await api.admin.crearUsuario(adminForm.email, adminForm.password, adminForm.role);
         addToast({ type: 'success', title: 'Administrador Creado', message: `Nuevo administrador registrado: ${adminForm.email}.` });
       }
       setShowAdminModal(false);
       setEditingAdmin(null);
       fetchAdmins();
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Error CRUD', message: err.message || 'Error al guardar administrador.' });
+    } catch (err) {
+      handleError(err, 'Error', 'Error al guardar administrador.');
     }
   };
 
   const startEditAdmin = (admin: UserProfile) => {
     setEditingAdmin(admin);
-    setAdminForm({
-      email: admin.email,
-      password: '',
-      role: admin.role
-    });
+    setAdminForm({ email: admin.email, password: '', role: admin.role });
     setShowAdminModal(true);
   };
 
@@ -344,108 +259,91 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
     }
     if (!window.confirm('¿Está seguro de eliminar este administrador?')) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/users/${adminId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
+      await api.admin.eliminarUsuario(adminId);
       addToast({ type: 'success', title: 'Administrador Eliminado', message: 'El usuario fue removido.' });
       fetchAdmins();
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: err.message || 'No se pudo eliminar el administrador.' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo eliminar el administrador.');
     }
   };
 
-  // Self Details Update Handler
-  const handleUpdateSelf = async (e: React.FormEvent) => {
+  // Cambio de contraseña propia (exige la contraseña actual)
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdatingSelf(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/users/${user.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          email: selfForm.email,
-          password: selfForm.password || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      addToast({ type: 'success', title: 'Perfil Guardado', message: 'Sus datos de acceso han sido modificados.' });
-      setSelfForm(prev => ({ ...prev, password: '' }));
-      
-      // Update local storage user profile data
-      const updatedUser = { ...user, email: selfForm.email };
-      localStorage.setItem('esc_user', JSON.stringify(updatedUser));
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Error', message: err.message || 'No se pudo actualizar su cuenta.' });
+      await api.cambiarPassword(selfForm.current, selfForm.next);
+      addToast({ type: 'success', title: 'Contraseña actualizada', message: 'Use la nueva contraseña en su próximo ingreso.' });
+      setSelfForm({ current: '', next: '' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo cambiar la contraseña.');
     } finally {
       setUpdatingSelf(false);
     }
   };
 
-  // Register Manual Order (CRM input)
-  const handleRegisterManualOrder = (e: React.FormEvent) => {
+  // Registro manual de pedido (venta directa): el servidor calcula flete y totales
+  const handleRegisterManualOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedProduct = products.find(p => p.id === manualOrderForm.product_id);
-    if (!selectedProduct) {
-      addToast({ type: 'error', title: 'Error', message: 'Seleccione un producto válido.' });
+    if (!api.telefonoValido(manualOrderForm.customer_phone)) {
+      addToast({ type: 'error', title: 'Teléfono inválido', message: 'Ingrese un celular de 8 dígitos o un fijo de 7 dígitos.' });
       return;
     }
-
-    const materialCost = manualOrderForm.quantity_tons * selectedProduct.unit_price_ton;
-    const finalTotal = materialCost + manualOrderForm.shipping_cost;
-
-    const newOrder: Order = {
-      customer_name: manualOrderForm.customer_name,
-      customer_phone: manualOrderForm.customer_phone,
-      lat: manualOrderForm.lat,
-      lng: manualOrderForm.lng,
-      total_weight_tons: manualOrderForm.quantity_tons,
-      shipping_cost: manualOrderForm.shipping_cost,
-      total_amount: finalTotal,
-      payment_method: manualOrderForm.payment_method,
-      status: 'Pendiente',
-      items: [{
-        product_id: selectedProduct.id,
-        quantity_tons: manualOrderForm.quantity_tons,
-        subtotal: materialCost,
-        product: selectedProduct
-      }]
-    };
-
-    saveLocalOrder(newOrder);
-    addToast({ type: 'success', title: 'Pedido Registrado', message: `Pedido manual ${newOrder.customer_name} guardado.` });
-    setShowOrderModal(false);
-    fetchOrders();
+    try {
+      const creado = await api.admin.crearPedido(
+        {
+          customerName: manualOrderForm.customer_name,
+          customerPhone: manualOrderForm.customer_phone,
+          lat: manualOrderForm.lat,
+          lng: manualOrderForm.lng,
+          paymentMethod: manualOrderForm.payment_method
+        },
+        manualOrderForm.product_id,
+        manualOrderForm.quantity_tons
+      );
+      addToast({ type: 'success', title: 'Pedido Registrado', message: `${creado.order_code}: total ${creado.total_amount.toLocaleString()} Bs. (flete ${creado.shipping_cost.toLocaleString()} Bs.).` });
+      setShowOrderModal(false);
+      fetchOrders();
+      fetchProducts();
+    } catch (err) {
+      handleError(err, 'No se registró el pedido', 'Revise los datos ingresados.');
+    }
   };
 
-  // 2FA Activate/Deactivate functions
+  // Guardar parámetros tarifarios (Superadmin)
+  const handleSaveParams = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const cambios: Record<string, number> = {};
+      Object.entries(paramsForm).forEach(([k, v]) => { cambios[k] = Number(v); });
+      await api.admin.guardarParametros(cambios);
+      addToast({ type: 'success', title: 'Parámetros guardados', message: 'Las nuevas tarifas se aplican a las próximas cotizaciones.' });
+      fetchParams();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudieron guardar los parámetros.');
+    }
+  };
+
+  // Exportar CSV (HU09)
+  const handleExportCsv = async () => {
+    try {
+      await api.admin.descargarCsv({ estado: filterStatus, desde: dateFrom || undefined, hasta: dateTo || undefined });
+      addToast({ type: 'success', title: 'Reporte CSV', message: 'Archivo descargado (compatible con Excel).' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo generar el CSV.');
+    }
+  };
+
+  // 2FA real (TOTP RFC 6238)
   const handleSetup2FA = async () => {
     setTwoFALoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/setup-2fa`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      setTwoFASecret(data.secret);
+      const r = await api.configurar2FA();
+      setTwoFASecret(r.secreto);
+      setTwoFAUrl(r.otpauth_url);
       setTwoFAStep('setup');
-      addToast({ type: 'info', title: '2FA Generado', message: 'Escanee el código QR e introduzca el código de validación.' });
-    } catch (err: any) {
-      // Offline mock setup fallback
-      const mockSecret = 'ESC2FASECRET2024';
-      setTwoFASecret(mockSecret);
-      setTwoFAStep('setup');
-      addToast({ type: 'info', title: '2FA Generado (Offline)', message: 'Copie la clave secreta manual para su app.' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo generar la configuración de 2FA.');
     } finally {
       setTwoFALoading(false);
     }
@@ -455,29 +353,14 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
     e.preventDefault();
     setTwoFALoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/enable-2fa`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ totp_code: twoFACodeInput })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
+      await api.activar2FA(twoFACodeInput);
       setTwoFAStep('enabled');
       setTwoFACodeInput('');
-      addToast({ type: 'success', title: '2FA Activado', message: 'Seguridad doble factor habilitada correctamente.' });
-    } catch (err: any) {
-      // Offline fallback success simulator (any 6 digit succeeds for testing offline)
-      if (twoFACodeInput.length === 6) {
-        setTwoFAStep('enabled');
-        setTwoFACodeInput('');
-        addToast({ type: 'success', title: '2FA Activado (Offline)', message: 'Seguridad doble factor habilitada (simulado).' });
-      } else {
-        addToast({ type: 'error', title: 'Código inválido', message: 'El código 2FA debe tener 6 dígitos.' });
-      }
+      setTwoFASecret(null);
+      setTwoFAUrl(null);
+      addToast({ type: 'success', title: '2FA Activado', message: 'Desde ahora se pedirá un código al iniciar sesión.' });
+    } catch (err) {
+      handleError(err, 'Código inválido', 'No se pudo activar el doble factor.');
     } finally {
       setTwoFALoading(false);
     }
@@ -487,128 +370,79 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
     e.preventDefault();
     setTwoFALoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/disable-2fa`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ totp_code: twoFACodeInput })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
+      await api.desactivar2FA(twoFAPassword, twoFACodeInput);
       setTwoFAStep('none');
       setTwoFACodeInput('');
-      addToast({ type: 'success', title: '2FA Desactivado', message: 'La seguridad de doble factor ha sido desactivada.' });
-    } catch (err: any) {
-      if (twoFACodeInput.length === 6) {
-        setTwoFAStep('none');
-        setTwoFACodeInput('');
-        addToast({ type: 'success', title: '2FA Desactivado (Offline)', message: 'Doble factor desactivado (simulado).' });
-      } else {
-        addToast({ type: 'error', title: 'Error', message: 'Ingrese el código de verificación actual para confirmar.' });
-      }
+      setTwoFAPassword('');
+      addToast({ type: 'success', title: '2FA Desactivado', message: 'La verificación en dos pasos fue desactivada.' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo desactivar el doble factor.');
     } finally {
       setTwoFALoading(false);
     }
   };
 
-  // Calculations for financial dashboard
-  const computeStats = () => {
-    let salesTotal = 0;
-    let tonsTotal = 0;
-    let pendingCount = 0;
-    let avgShipping = 0;
-    let shippingSum = 0;
-    
-    // Gain/Loss elements
-    let materialsCostTotal = 0;
-    let logisticsCostTotal = 0;
-    let netProfitTotal = 0;
+  // Indicadores del panel: se calculan con los importes y costos estimados que guarda el servidor
+  const stats = useMemo(() => {
+    const validos = orders.filter(o => o.status !== 'Cancelado');
+    let salesTotal = 0, tonsTotal = 0, shippingSum = 0, materialsCostTotal = 0, logisticsCostTotal = 0, netProfitTotal = 0;
+    const productSalesMap: Record<string, number> = {};
+    const monthlySalesMap: Record<string, { revenue: number; costs: number; profit: number; order: number }> = {};
 
-    const productSalesMap: Record<string, number> = {
-      'Silo de maíz': 0,
-      'Soya': 0,
-      'Sorgo': 0,
-    };
-
-    const monthlySalesMap: Record<string, { revenue: number; costs: number; profit: number }> = {};
-
-    orders.forEach(o => {
+    validos.forEach(o => {
       salesTotal += o.total_amount;
       tonsTotal += o.total_weight_tons;
       shippingSum += o.shipping_cost;
-      if (o.status === 'Pendiente') pendingCount++;
-
-      const subtotal = o.total_amount - o.shipping_cost;
-      const costItems = subtotal * 0.60; // 60% of material price is production cost
-      const costLogistics = o.shipping_cost * 0.70; // 70% of logistics price is real expense
-      const profit = o.total_amount - costItems - costLogistics;
-
+      const costItems = o.cost_items_bs ?? 0;
+      const costLogistics = o.cost_logistics_bs ?? 0;
+      const profit = o.net_profit_bs ?? 0;
       materialsCostTotal += costItems;
       logisticsCostTotal += costLogistics;
       netProfitTotal += profit;
 
-      // Group by Month
       const date = new Date(o.created_at || Date.now());
-      const monthName = date.toLocaleString('es-ES', { month: 'short' }).toUpperCase();
-      if (!monthlySalesMap[monthName]) {
-        monthlySalesMap[monthName] = { revenue: 0, costs: 0, profit: 0 };
-      }
-      monthlySalesMap[monthName].revenue += o.total_amount;
-      monthlySalesMap[monthName].costs += costItems + costLogistics;
-      monthlySalesMap[monthName].profit += profit;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthlySalesMap[key]) monthlySalesMap[key] = { revenue: 0, costs: 0, profit: 0, order: date.getFullYear() * 12 + date.getMonth() };
+      monthlySalesMap[key].revenue += o.total_amount;
+      monthlySalesMap[key].costs += costItems + costLogistics;
+      monthlySalesMap[key].profit += profit;
 
-      // Product sales share
-      if (o.items && o.items.length > 0) {
-        o.items.forEach(i => {
-          const prodName = i.product?.name || (i.product_id === 'prod-silo-maiz' ? 'Silo de maíz' : i.product_id === 'prod-soya' ? 'Soya' : 'Sorgo');
-          if (productSalesMap[prodName] !== undefined) {
-            productSalesMap[prodName] += i.subtotal;
-          }
-        });
-      } else {
-        productSalesMap['Silo de maíz'] += subtotal;
-      }
+      (o.items || []).forEach(i => {
+        const nombre = i.product?.name || 'Producto';
+        productSalesMap[nombre] = (productSalesMap[nombre] || 0) + i.subtotal;
+      });
     });
 
-    avgShipping = orders.length > 0 ? shippingSum / orders.length : 0;
-
-    const salesByProductData = Object.keys(productSalesMap).map(key => ({
-      name: key,
-      value: Math.round(productSalesMap[key])
-    })).filter(item => item.value > 0);
-
-    const monthlyTrendData = Object.keys(monthlySalesMap).map(key => ({
-      month: key,
-      ingresos: Math.round(monthlySalesMap[key].revenue),
-      costos: Math.round(monthlySalesMap[key].costs),
-      ganancia: Math.round(monthlySalesMap[key].profit)
-    }));
-
-    // Gain/Loss details data
-    const gainLossData = [
-      { name: 'Ganancia Neta', value: Math.max(0, Math.round(netProfitTotal)) },
-      { name: 'Costo de Materiales', value: Math.round(materialsCostTotal) },
-      { name: 'Costo de Logística', value: Math.round(logisticsCostTotal) }
-    ].filter(v => v.value > 0);
+    const nombreMes = (key: string) => {
+      const [y, m] = key.split('-').map(Number);
+      return `${new Date(y, m - 1, 1).toLocaleString('es-ES', { month: 'short' }).toUpperCase()} ${String(y).slice(2)}`;
+    };
+    const monthlyTrendData = Object.keys(monthlySalesMap)
+      .sort((a, b) => monthlySalesMap[a].order - monthlySalesMap[b].order)
+      .map(key => ({
+        month: nombreMes(key),
+        ingresos: Math.round(monthlySalesMap[key].revenue),
+        costos: Math.round(monthlySalesMap[key].costs),
+        ganancia: Math.round(monthlySalesMap[key].profit)
+      }));
 
     return {
       salesTotal,
       materialsCost: Math.round(materialsCostTotal),
       logisticsCost: Math.round(logisticsCostTotal),
       netProfit: Math.round(netProfitTotal),
-      tonsTotal,
-      pendingCount,
-      avgShipping: Math.round(avgShipping),
-      salesByProductData,
-      monthlyTrendData: monthlyTrendData.length > 0 ? monthlyTrendData : [{ month: 'JUN', ingresos: 0, costos: 0, ganancia: 0 }],
-      gainLossData
+      tonsTotal: Math.round(tonsTotal * 100) / 100,
+      pendingCount: orders.filter(o => o.status === 'Pendiente').length,
+      avgShipping: validos.length > 0 ? Math.round(shippingSum / validos.length) : 0,
+      salesByProductData: Object.keys(productSalesMap).map(name => ({ name, value: Math.round(productSalesMap[name]) })).filter(i => i.value > 0),
+      monthlyTrendData: monthlyTrendData.length > 0 ? monthlyTrendData : [{ month: '—', ingresos: 0, costos: 0, ganancia: 0 }],
+      gainLossData: [
+        { name: 'Ganancia Neta', value: Math.max(0, Math.round(netProfitTotal)) },
+        { name: 'Costo de Materiales', value: Math.round(materialsCostTotal) },
+        { name: 'Costo de Logística', value: Math.round(logisticsCostTotal) }
+      ].filter(v => v.value > 0)
     };
-  };
-
-  const stats = computeStats();
+  }, [orders]);
 
   const generatePDFReport = async () => {
     const element = document.getElementById('pdf-report-template');
@@ -674,13 +508,13 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
         {/* Database state indicator & tabs selector */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center space-x-2 bg-dark-900 border border-dark-600 px-3 py-1.5 rounded-xl">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className={`h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
             <span className="text-[10px] font-bold text-dark-200 uppercase tracking-wider">
-              {dbMode}
+              {online ? 'Conectado al servidor' : 'Sin conexión'}
             </span>
           </div>
           <button
-            onClick={fetchOrders}
+            onClick={refreshAll}
             className="p-2 bg-dark-900 border border-dark-600 hover:border-agro-500 rounded-xl text-white transition-all hover:scale-105"
             title="Sincronizar Datos"
           >
@@ -702,12 +536,15 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
           { id: 'dashboard', label: 'Estadísticas & CRM', icon: <TrendingUp className="h-4 w-4" /> },
           { id: 'orders', label: 'Gestión Pedidos', icon: <Truck className="h-4 w-4" /> },
           { id: 'products', label: 'Productos', icon: <Package className="h-4 w-4" /> },
-          ...(user.role === 'Superadmin' ? [{ id: 'admins', label: 'Administradores', icon: <Users className="h-4 w-4" /> }] : []),
+          ...(esSuper ? [
+            { id: 'admins', label: 'Administradores', icon: <Users className="h-4 w-4" /> },
+            { id: 'params', label: 'Tarifas de Flete', icon: <Settings className="h-4 w-4" /> }
+          ] : []),
           { id: 'security', label: 'Mi Cuenta & 2FA', icon: <Key className="h-4 w-4" /> }
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as TabId)}
             className={`flex items-center space-x-2 px-5 py-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-agro-accent text-agro-accent font-black bg-agro-500/10 rounded-t-xl'
@@ -942,6 +779,29 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
+                {/* Filtro por fechas y exportación CSV (HU09) */}
+                <div className="flex items-center gap-2 text-xs text-dark-300">
+                  <label className="flex items-center gap-1">Desde
+                    <input type="date" value={dateFrom} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}
+                      className="bg-dark-900 border border-dark-600 rounded-lg px-2 py-1 text-white" />
+                  </label>
+                  <label className="flex items-center gap-1">Hasta
+                    <input type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}
+                      className="bg-dark-900 border border-dark-600 rounded-lg px-2 py-1 text-white" />
+                  </label>
+                  {(dateFrom || dateTo) && (
+                    <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-dark-400 hover:text-white underline">Limpiar</button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="py-2 px-4 flex items-center space-x-1.5 text-xs font-bold bg-dark-900 border border-dark-600 hover:border-agro-500 rounded-xl text-white"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Exportar CSV</span>
+                </button>
+
                 {/* Manual Register button */}
                 <button
                   onClick={() => {
@@ -954,7 +814,6 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                       customer_phone: '',
                       product_id: products[0].id,
                       quantity_tons: 10,
-                      shipping_cost: 1200,
                       payment_method: 'Transferencia',
                       lat: -17.7500,
                       lng: -63.0700
@@ -969,7 +828,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
 
                 {/* Filters */}
                 <div className="flex items-center space-x-2 bg-dark-900 rounded-xl p-1 border border-dark-600">
-                  {['Todos', 'Pendiente', 'En Camino', 'Entregado'].map((status) => (
+                  {ESTADOS_FILTRO.map((status) => (
                     <button
                       key={status}
                       onClick={() => setFilterStatus(status)}
@@ -1037,18 +896,21 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                           <td className="py-4 px-6 text-center">
                             <select
                               value={order.status}
-                              onChange={(e) => handleStatusChange(order.id!, e.target.value as any)}
-                              className={`text-xs font-bold rounded-xl px-3 py-1.5 border appearance-none focus:outline-none text-center cursor-pointer bg-dark-900 ${
+                              disabled={TRANSICIONES[order.status].length === 0}
+                              onChange={(e) => handleStatusChange(order.id!, e.target.value as OrderStatus)}
+                              className={`text-xs font-bold rounded-xl px-3 py-1.5 border appearance-none focus:outline-none text-center cursor-pointer disabled:cursor-not-allowed bg-dark-900 ${
                                 order.status === 'Pendiente'
                                   ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/5'
                                   : order.status === 'En Camino'
                                   ? 'text-blue-400 border-blue-500/30 bg-blue-500/5'
+                                  : order.status === 'Cancelado'
+                                  ? 'text-red-400 border-red-500/30 bg-red-500/5'
                                   : 'text-green-400 border-green-500/30 bg-green-500/5'
                               }`}
                             >
-                              <option value="Pendiente">Pendiente</option>
-                              <option value="En Camino">En Camino</option>
-                              <option value="Entregado">Entregado</option>
+                              {[order.status, ...TRANSICIONES[order.status]].map(st => (
+                                <option key={st} value={st}>{st}</option>
+                              ))}
                             </select>
                           </td>
                           <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
@@ -1064,17 +926,19 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                               </a>
                             ) : (
                               <span className="text-[10px] text-dark-400 bg-dark-900 border border-dark-800 px-2 py-1.5 rounded-lg select-none">
-                                Sin Ruta
+                                {order.status === 'Cancelado' ? 'Cancelado' : 'Sin Ruta'}
                               </span>
                             )}
                             
-                            <button
-                              onClick={() => handleDeleteOrder(order.id!)}
-                              className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                              title="Eliminar Pedido"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {TRANSICIONES[order.status].includes('Cancelado') && (
+                              <button
+                                onClick={() => handleStatusChange(order.id!, 'Cancelado')}
+                                className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                                title="Cancelar Pedido (devuelve el stock)"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1121,15 +985,29 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => handleDeleteProduct(prod.id)}
-                          className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {esSuper && prod.active !== false && (
+                          <button
+                            onClick={() => handleDeleteProduct(prod.id)}
+                            className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                            title="Desactivar producto"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {prod.active === false && (
+                          <button
+                            onClick={() => handleReactivateProduct(prod)}
+                            className="px-2 text-[10px] font-bold text-agro-accent border border-agro-500/40 rounded-lg hover:bg-agro-500/10"
+                          >
+                            Reactivar
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <h4 className="font-display font-extrabold text-white text-lg mb-2">{prod.name}</h4>
+                    <h4 className="font-display font-extrabold text-white text-lg mb-2">
+                      {prod.name}
+                      {prod.active === false && <span className="ml-2 text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded align-middle">Inactivo</span>}
+                    </h4>
                     <p className="text-xs text-dark-300 leading-relaxed mb-4">{prod.description}</p>
                   </div>
 
@@ -1233,40 +1111,88 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
           </div>
         )}
 
+        {/* TAB: TARIFAS DE FLETE (solo Superadmin) */}
+        {activeTab === 'params' && esSuper && (
+          <form onSubmit={handleSaveParams} className="glass rounded-3xl p-6 border border-dark-800 space-y-6 max-w-3xl animate-fade-in">
+            <div>
+              <h3 className="font-display font-extrabold text-white text-base">Tarifas y parámetros del cálculo de flete</h3>
+              <p className="text-xs text-dark-400">
+                Flete = viajes × (tarifa base + km × precio por km) + Σ (toneladas × factor del producto). Los cambios se aplican a las próximas cotizaciones.
+              </p>
+            </div>
+            {!params ? (
+              <p className="text-sm text-dark-400">Cargando parámetros...</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {([
+                  ['tarifa_base_bs', 'Tarifa base por viaje (Bs.)', '1'],
+                  ['precio_km_bs', 'Precio por kilómetro (Bs.)', '0.5'],
+                  ['factor_correccion_rural', 'Factor de corrección rural (contingencia Haversine)', '0.01'],
+                  ['capacidad_vehiculo_tons', 'Capacidad del vehículo (TM por viaje)', '1'],
+                  ['peso_minimo_tons', 'Pedido mínimo (TM)', '0.5'],
+                  ['pct_costo_mercaderia', 'Costo de mercadería estimado (fracción, ej. 0.60)', '0.01'],
+                  ['pct_costo_logistico', 'Costo logístico estimado (fracción del flete, ej. 0.70)', '0.01'],
+                ] as const).map(([campo, etiqueta, paso]) => (
+                  <div key={campo}>
+                    <label className="block text-xs font-bold text-dark-300 uppercase mb-1">{etiqueta}</label>
+                    <input
+                      type="number"
+                      step={paso}
+                      min="0"
+                      required
+                      value={paramsForm[campo] ?? ''}
+                      onChange={e => setParamsForm(prev => ({ ...prev, [campo]: e.target.value }))}
+                      className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <button type="submit" disabled={!params} className="btn-gold py-2.5 px-6 flex items-center space-x-2 text-dark-900 font-bold disabled:opacity-50">
+              <Save className="h-4 w-4" />
+              <span>Guardar parámetros</span>
+            </button>
+          </form>
+        )}
+
         {/* TAB 5: SECURITY & 2FA */}
         {activeTab === 'security' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
             
             {/* Account Details changes */}
-            <form onSubmit={handleUpdateSelf} className="glass rounded-3xl p-6 border border-dark-800 space-y-6">
+            <form onSubmit={handleChangePassword} className="glass rounded-3xl p-6 border border-dark-800 space-y-6">
               <div>
-                <h3 className="font-display font-extrabold text-white text-base">Mis Datos de Acceso</h3>
-                <p className="text-xs text-dark-400">Modifique sus credenciales para ingresar al sistema.</p>
+                <h3 className="font-display font-extrabold text-white text-base">Mi Cuenta</h3>
+                <p className="text-xs text-dark-400">Sesión de <span className="text-gold-300 font-bold">{user.email}</span>. Para cambiar la contraseña debe confirmar la actual.</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Correo Electrónico</label>
+                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Contraseña actual</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
                     <input
-                      type="email"
-                      value={selfForm.email}
-                      onChange={e => setSelfForm(prev => ({ ...prev, email: e.target.value }))}
+                      type="password"
+                      value={selfForm.current}
+                      onChange={e => setSelfForm(prev => ({ ...prev, current: e.target.value }))}
                       required
+                      autoComplete="current-password"
                       className="w-full pl-10 pr-4 py-2.5 bg-dark-900 border border-dark-650 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-agro-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Nueva Contraseña (dejar vacío si no cambia)</label>
+                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
                     <input
                       type="password"
-                      value={selfForm.password}
-                      onChange={e => setSelfForm(prev => ({ ...prev, password: e.target.value }))}
+                      value={selfForm.next}
+                      onChange={e => setSelfForm(prev => ({ ...prev, next: e.target.value }))}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
                       placeholder="••••••••"
                       className="w-full pl-10 pr-4 py-2.5 bg-dark-900 border border-dark-650 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-agro-500"
                     />
@@ -1279,7 +1205,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                   className="btn-gold py-2.5 px-6 flex items-center justify-center space-x-2 w-full disabled:opacity-60 text-dark-900 font-bold"
                 >
                   <Save className="h-4 w-4" />
-                  <span>{updatingSelf ? 'Guardando...' : 'Actualizar Credenciales'}</span>
+                  <span>{updatingSelf ? 'Guardando...' : 'Cambiar Contraseña'}</span>
                 </button>
               </div>
             </form>
@@ -1302,7 +1228,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                     disabled={twoFALoading}
                     className="btn-agro w-full py-3 flex items-center justify-center space-x-2 disabled:opacity-50 text-white font-bold"
                   >
-                    <QrCode className="h-4 w-4 text-agro-accent animate-pulse" />
+                    <Key className="h-4 w-4 text-agro-accent" />
                     <span>{twoFALoading ? 'Generando configuración...' : 'Activar Doble Factor'}</span>
                   </button>
                 </div>
@@ -1311,20 +1237,14 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
               {twoFAStep === 'setup' && (
                 <form onSubmit={handleVerifyAndEnable2FA} className="space-y-4 animate-scale-in">
                   <div className="flex flex-col items-center p-4 bg-white rounded-2xl border-gradient-agro">
-                    {/* Simulated SVG QR code representation */}
-                    <div className="w-[140px] h-[140px] bg-dark-900 border border-dark-700 p-2 rounded-lg flex items-center justify-center relative">
-                      <QrCode className="w-24 h-24 text-white animate-pulse" />
-                      <div className="absolute inset-0 bg-transparent flex items-center justify-center">
-                        <span className="text-[9px] bg-agro-500 text-white px-2 py-0.5 rounded font-mono font-bold">QR DE CONFIGURACIÓN</span>
-                      </div>
-                    </div>
+                    {twoFAUrl && <QRCodeSVG value={twoFAUrl} size={160} includeMargin />}
                     <span className="text-[10px] text-dark-800 font-bold font-mono mt-3 uppercase tracking-wide select-all cursor-pointer">
-                      Secret: {twoFASecret}
+                      Clave manual: {twoFASecret}
                     </span>
                   </div>
 
                   <p className="text-xs text-dark-300">
-                    Escanee el QR. Luego ingrese el código temporal de 6 dígitos para confirmar activación:
+                    Escanee el QR con su aplicación (o ingrese la clave manual). Luego ingrese el código temporal de 6 dígitos para confirmar activación:
                   </p>
 
                   <div className="flex gap-2">
@@ -1350,7 +1270,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
 
                   <button
                     type="button"
-                    onClick={() => { setTwoFAStep('none'); setTwoFACodeInput(''); }}
+                    onClick={() => { setTwoFAStep('none'); setTwoFACodeInput(''); setTwoFASecret(null); setTwoFAUrl(null); }}
                     className="text-xs text-dark-400 hover:text-white block w-full text-center"
                   >
                     Cancelar Configuración
@@ -1369,8 +1289,17 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                   </div>
 
                   <p className="text-xs text-dark-400">
-                    Para desactivar el doble factor de autenticación, ingrese un código temporal generado en su aplicación móvil:
+                    Para desactivar el doble factor, confirme su contraseña e ingrese un código vigente de su aplicación:
                   </p>
+                  <input
+                    type="password"
+                    value={twoFAPassword}
+                    onChange={e => setTwoFAPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    placeholder="Contraseña actual"
+                    className="w-full py-2 px-3 bg-dark-900 border border-dark-655 rounded-xl text-white text-sm focus:outline-none"
+                  />
 
                   <div className="flex gap-2">
                     <input
@@ -1467,25 +1396,19 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Cantidad (Tons)</label>
                 <input
                   type="number"
-                  min="1"
+                  min="0.5"
+                  step="0.5"
                   required
                   value={manualOrderForm.quantity_tons}
-                  onChange={e => setManualOrderForm(prev => ({ ...prev, quantity_tons: parseInt(e.target.value) || 0 }))}
+                  onChange={e => setManualOrderForm(prev => ({ ...prev, quantity_tons: parseFloat(e.target.value) || 0 }))}
                   className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Costo Flete Envío (Bs.)</label>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  value={manualOrderForm.shipping_cost}
-                  onChange={e => setManualOrderForm(prev => ({ ...prev, shipping_cost: parseInt(e.target.value) || 0 }))}
-                  className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
-                />
-              </div>
+              <p className="col-span-2 text-[11px] text-dark-300 bg-dark-900 border border-dark-700 rounded-xl p-3">
+                El flete, la cantidad de viajes y el total se calculan automáticamente en el servidor a partir de las coordenadas y el peso.
+                Se descuenta el stock del producto.
+              </p>
 
               <div>
                 <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Finca Latitud</label>
@@ -1576,22 +1499,24 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                   <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Precio Unitario (Bs./Ton)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
+                    step="0.01"
                     required
                     value={productForm.unit_price_ton}
-                    onChange={e => setProductForm(prev => ({ ...prev, unit_price_ton: parseInt(e.target.value) || 0 }))}
+                    onChange={e => setProductForm(prev => ({ ...prev, unit_price_ton: parseFloat(e.target.value) || 0 }))}
                     className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Stock Inicial (Tons)</label>
+                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Stock Disponible (Tons)</label>
                   <input
                     type="number"
                     min="0"
+                    step="0.01"
                     required
                     value={productForm.stock_tons}
-                    onChange={e => setProductForm(prev => ({ ...prev, stock_tons: parseInt(e.target.value) || 0 }))}
+                    onChange={e => setProductForm(prev => ({ ...prev, stock_tons: parseFloat(e.target.value) || 0 }))}
                     className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
                   />
                 </div>
@@ -1650,10 +1575,11 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 <input
                   type="email"
                   required
+                  disabled={!!editingAdmin}
                   value={adminForm.email}
                   onChange={e => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
                   placeholder="admin-nuevo@ensilados.com"
-                  className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none"
+                  className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none disabled:opacity-60"
                 />
               </div>
 
@@ -1664,6 +1590,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 <input
                   type="password"
                   required={!editingAdmin}
+                  minLength={8}
                   value={adminForm.password}
                   onChange={e => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
                   placeholder="••••••••"
@@ -1773,7 +1700,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 paddingAngle={5}
                 dataKey="value"
               >
-                {stats.gainLossData.map((entry, index) => (
+                {stats.gainLossData.map((_entry, index) => (
                   <Cell key={`cell-${index}`} fill={PROFIT_COLORS[index % PROFIT_COLORS.length]} />
                 ))}
               </Pie>
@@ -1790,7 +1717,7 @@ export default function AdminDashboard({ user, token, onLogout, addToast }: Admi
                 paddingAngle={5}
                 dataKey="value"
               >
-                {stats.salesByProductData.map((entry, index) => (
+                {stats.salesByProductData.map((_entry, index) => (
                   <Cell key={`cell-${index}`} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
                 ))}
               </Pie>

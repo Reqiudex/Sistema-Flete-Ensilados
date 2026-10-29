@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShoppingBag, ArrowRight, Trash2, ShieldCheck, ShoppingCart, User, Phone, CheckCircle2, Wheat, Sprout } from 'lucide-react';
-import { Product, CartItem } from '../types';
+import { Product, CartItem, NewOrderPayload, FleteQuote } from '../types';
+import { obtenerParametros, PARAMETROS_POR_DEFECTO, telefonoValido } from '../api';
 import MapComponent from './MapComponent';
 
 interface CatalogCartProps {
@@ -9,16 +10,10 @@ interface CatalogCartProps {
   addToCart: (product: Product, qty: number) => void;
   removeFromCart: (productId: string) => void;
   updateCartQty: (productId: string, qty: number) => void;
-  onSubmitOrder: (orderData: {
-    customerName: string;
-    customerPhone: string;
-    lat: number;
-    lng: number;
-    shippingCost: number;
-    totalAmount: number;
-    totalWeight: number;
-    paymentMethod: 'QR' | 'Transferencia' | 'WhatsApp';
-  }) => void;
+  productsOffline?: boolean;
+  productsError?: string | null;
+  /** Devuelve null si se registró bien o el mensaje de error a mostrar. */
+  onSubmitOrder: (orderData: NewOrderPayload, quote: FleteQuote | null) => Promise<string | null>;
 }
 
 export default function CatalogCart({
@@ -27,6 +22,8 @@ export default function CatalogCart({
   addToCart,
   removeFromCart,
   updateCartQty,
+  productsOffline = false,
+  productsError = null,
   onSubmitOrder,
 }: CatalogCartProps) {
   const [step, setStep] = useState<'catalog' | 'terms' | 'checkout'>('catalog');
@@ -41,13 +38,22 @@ export default function CatalogCart({
   const [distance, setDistance] = useState<number>(0);
   const [calcSource, setCalcSource] = useState<'google' | 'haversine'>('haversine');
   const [isCalculating, setIsCalculating] = useState(false);
+  const [trips, setTrips] = useState<number>(1);
+  const [quote, setQuote] = useState<FleteQuote | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [minWeight, setMinWeight] = useState<number>(PARAMETROS_POR_DEFECTO.peso_minimo_tons);
+
+  useEffect(() => {
+    obtenerParametros().then(p => setMinWeight(p.peso_minimo_tons));
+  }, []);
 
   // Temporary quantity values for product cards
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   const cartTotalWeight = cart.reduce((sum, item) => sum + item.quantityTons, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.quantityTons * item.product.unit_price_ton, 0);
-  const totalAmount = cartSubtotal + fleteCost;
+  const totalAmount = Math.round((cartSubtotal + fleteCost) * 100) / 100;
 
   const handleQtyChange = (productId: string, val: string) => {
     const num = parseFloat(val);
@@ -58,44 +64,55 @@ export default function CatalogCart({
   };
 
   const handleAddToCartClick = (product: Product) => {
-    const qty = quantities[product.id] || 1;
-    if (qty <= 0) return;
+    const qty = quantities[product.id] !== undefined ? quantities[product.id] : 1;
+    const enCarrito = cart.find(i => i.product.id === product.id)?.quantityTons || 0;
+    if (!(qty > 0)) { setFormError('Ingrese una cantidad mayor a 0 toneladas.'); return; }
+    if (enCarrito + qty > product.stock_tons) {
+      setFormError(`Solo hay ${product.stock_tons} TM disponibles de ${product.name}.`);
+      return;
+    }
+    setFormError(null);
     addToCart(product, qty);
     // Reset temporary quantity to 1 after adding
     setQuantities(prev => ({ ...prev, [product.id]: 1 }));
   };
 
-  const handleFleteCalculated = (details: {
-    shippingCost: number;
-    distance: number;
-    source: 'google' | 'haversine';
-  }) => {
-    setFleteCost(details.shippingCost);
-    setDistance(details.distance);
-    setCalcSource(details.source);
+  const handleFleteCalculated = (q: FleteQuote) => {
+    setFleteCost(q.shipping_cost);
+    setDistance(q.distance_km);
+    setCalcSource(q.source);
+    setTrips(q.trips);
+    setQuote(q);
+    setFormError(null);
   };
 
-  const handleCheckoutSubmit = (e: React.FormEvent) => {
+  const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim() || !customerPhone.trim()) {
-      alert('Por favor complete su nombre y número celular.');
+    if (customerName.trim().length < 3) {
+      setFormError('Ingrese su nombre completo (mínimo 3 caracteres).');
+      return;
+    }
+    if (!telefonoValido(customerPhone)) {
+      setFormError('Ingrese un número válido: celular de 8 dígitos (ej. 78945612) o fijo de 7 dígitos.');
+      return;
+    }
+    if (cartTotalWeight < minWeight) {
+      setFormError(`El pedido mínimo es de ${minWeight} toneladas.`);
       return;
     }
     if (!selectedCoords) {
-      alert('Por favor arrastre el marcador en el mapa para ubicar su propiedad rural.');
+      setFormError('Arrastre el marcador en el mapa para ubicar su propiedad rural.');
       return;
     }
 
-    onSubmitOrder({
-      customerName,
-      customerPhone,
-      lat: selectedCoords.lat,
-      lng: selectedCoords.lng,
-      shippingCost: fleteCost,
-      totalAmount,
-      totalWeight: cartTotalWeight,
-      paymentMethod
-    });
+    setFormError(null);
+    setSubmitting(true);
+    const error = await onSubmitOrder(
+      { customerName: customerName.trim(), customerPhone, lat: selectedCoords.lat, lng: selectedCoords.lng, paymentMethod },
+      quote
+    );
+    setSubmitting(false);
+    if (error) setFormError(error);
   };
 
   // Helper product illustrations/badges
@@ -162,6 +179,17 @@ export default function CatalogCart({
           {/* Catalog grid */}
           <div className="lg:col-span-2 space-y-6">
             <h2 className="text-2xl font-extrabold text-agro-600">Catálogo de Ensilados</h2>
+            {productsOffline && (
+              <p className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3">
+                Sin conexión: se muestra el último catálogo guardado. Precios y disponibilidad se confirman al enviar el pedido.
+              </p>
+            )}
+            {productsError && products.length === 0 && (
+              <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg p-3">{productsError}</p>
+            )}
+            {formError && step === 'catalog' && (
+              <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg p-3" role="alert">{formError}</p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {products.map((product) => {
                 const tempQty = quantities[product.id] !== undefined ? quantities[product.id] : 1;
@@ -198,7 +226,8 @@ export default function CatalogCart({
                         <label className="sr-only">Toneladas</label>
                         <input
                           type="number"
-                          min="1"
+                          min={minWeight}
+                          step="0.5"
                           max={product.stock_tons}
                           value={tempQty === 0 ? '' : tempQty}
                           onChange={(e) => handleQtyChange(product.id, e.target.value)}
@@ -244,12 +273,14 @@ export default function CatalogCart({
                       <div className="flex items-center space-x-2">
                         <input
                           type="number"
-                          min="1"
+                          min={minWeight}
+                          step="0.5"
+                          max={item.product.stock_tons}
                           value={item.quantityTons}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value);
                             if (!isNaN(val) && val > 0) {
-                              updateCartQty(item.product.id, val);
+                              updateCartQty(item.product.id, Math.min(val, item.product.stock_tons));
                             }
                           }}
                           className="w-14 text-center py-1 border border-gray-200 rounded text-xs font-bold focus:outline-none"
@@ -275,6 +306,9 @@ export default function CatalogCart({
                     <span>Subtotal material:</span>
                     <span>{cartSubtotal.toLocaleString()} Bs.</span>
                   </div>
+                  {cartTotalWeight < minWeight && (
+                    <p className="text-[11px] text-red-600">Pedido mínimo: {minWeight} toneladas.</p>
+                  )}
                   <p className="text-[11px] text-gray-400 bg-agro-50 p-2.5 rounded-lg border border-agro-100 flex items-start space-x-1">
                     <ShieldCheck className="h-4 w-4 text-agro-500 shrink-0 mt-0.5" />
                     <span>El flete logístico desde los silos de San Ramón se calculará con mapa en el siguiente paso.</span>
@@ -387,6 +421,7 @@ export default function CatalogCart({
                     <Phone className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                     <input
                       type="tel"
+                      inputMode="tel"
                       required
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
@@ -438,8 +473,15 @@ export default function CatalogCart({
                   </span>
                 </div>
                 {distance > 0 && (
+                  <div className="flex justify-between">
+                    <span>Viajes necesarios:</span>
+                    <span className="font-semibold">{trips}</span>
+                  </div>
+                )}
+                {distance > 0 && (
                   <div className="text-[10px] text-gray-400 text-right">
-                    Ruta calculada vía: {calcSource === 'google' ? 'Google Roads' : 'Línea recta (Ajustada)'}
+                    Distancia calculada vía: {calcSource === 'google' ? 'Google Maps (ruta)' : 'Línea recta ajustada ×1,25'}
+                    {quote?.estimated_offline && ' · estimación sin conexión (el servidor confirma el valor final)'}
                   </div>
                 )}
               </div>
@@ -449,15 +491,19 @@ export default function CatalogCart({
                 <span className="text-agro-600">{totalAmount.toLocaleString()} Bs.</span>
               </div>
 
+              {formError && step === 'checkout' && (
+                <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg p-3" role="alert">{formError}</p>
+              )}
+
               <button
                 type="submit"
-                disabled={!selectedCoords || isCalculating}
+                disabled={!selectedCoords || isCalculating || submitting}
                 className={`w-full bg-agro-500 hover:bg-agro-600 text-white py-3.5 rounded-xl font-extrabold text-base transition-all shadow-md flex items-center justify-center space-x-2 ${
-                  (!selectedCoords || isCalculating) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.01]'
+                  (!selectedCoords || isCalculating || submitting) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.01]'
                 }`}
               >
                 <CheckCircle2 className="h-5 w-5 text-agro-accent" />
-                <span>Confirmar y Enviar Pedido</span>
+                <span>{submitting ? 'Enviando pedido...' : 'Confirmar y Enviar Pedido'}</span>
               </button>
             </div>
           </div>
@@ -482,13 +528,15 @@ export default function CatalogCart({
               <div className="rounded-xl overflow-hidden border border-gray-200">
                 <MapComponent
                   cartItems={cart.map(item => ({
+                    product_id: item.product.id,
                     quantity_tons: item.quantityTons,
-                    factor_flete: item.product.factor_flete
+                    factor_flete: item.product.factor_flete,
+                    unit_price_ton: item.product.unit_price_ton
                   }))}
-                  totalWeight={cartTotalWeight}
                   onLocationSelected={(coords: { lat: number; lng: number }) => setSelectedCoords(coords)}
                   onFleteCalculated={handleFleteCalculated}
                   onCalculationStateChange={(loading: boolean) => setIsCalculating(loading)}
+                  onError={(msg: string | null) => setFormError(msg)}
                 />
               </div>
             </div>

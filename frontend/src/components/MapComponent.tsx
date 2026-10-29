@@ -1,28 +1,27 @@
 /// <reference types="google.maps" />
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { ApiError, ItemCotizacion, calcularFlete, cotizarLocal, obtenerParametros, PARAMETROS_POR_DEFECTO, mensajeError } from '../api';
+import { FleteQuote } from '../types';
 
 interface MapComponentProps {
-  cartItems: { quantity_tons: number; factor_flete: number }[];
-  totalWeight: number;
+  cartItems: ItemCotizacion[];
   onLocationSelected: (coords: { lat: number; lng: number }) => void;
-  onFleteCalculated: (details: {
-    shippingCost: number;
-    distance: number;
-    source: 'google' | 'haversine';
-  }) => void;
+  onFleteCalculated: (quote: FleteQuote) => void;
   onCalculationStateChange: (loading: boolean) => void;
+  /** Error de validación del servidor (p. ej. pedido mínimo); null limpia el mensaje. */
+  onError?: (mensaje: string | null) => void;
 }
 
-const ORIGIN_LAT = -16.6133;
-const ORIGIN_LNG = -62.4994;
+const ORIGIN_LAT = PARAMETROS_POR_DEFECTO.origen.lat;
+const ORIGIN_LNG = PARAMETROS_POR_DEFECTO.origen.lng;
 
 export default function MapComponent({
   cartItems,
-  totalWeight,
   onLocationSelected,
   onFleteCalculated,
   onCalculationStateChange,
+  onError,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -143,104 +142,40 @@ export default function MapComponent({
     }
   }, [mapLoaded, isOfflineMode]);
 
-  // Ejecutar cálculo con el backend
+  // Cotización: el servidor es la fuente de verdad; sin conexión se usa la misma fórmula en local.
   const calculateFlete = async (lat: number, lng: number) => {
     onCalculationStateChange(true);
+    onError?.(null);
     try {
-      // Determinamos URL del backend dinámicamente
-      const host = window.location.hostname;
-      const apiEndpoint = `http://${host}:3001/api/calculate-flete`;
-
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          lat,
-          lng,
-          total_weight_tons: totalWeight,
-          items: cartItems.map(i => ({
-            quantity_tons: i.quantity_tons,
-            factor_flete: i.factor_flete
-          }))
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        onFleteCalculated({
-          shippingCost: data.shipping_cost,
-          distance: data.distance_km,
-          source: data.calculation_source
-        });
-      } else {
-        console.warn('Backend API falló. Usando cálculo local de contingencia.');
-        calculateFleteLocalFallback(lat, lng);
-      }
+      onFleteCalculated(await calcularFlete(lat, lng, cartItems));
     } catch (err) {
-      console.error('Error de red al calcular flete. Usando cálculo local de contingencia:', err);
-      calculateFleteLocalFallback(lat, lng);
+      if (err instanceof ApiError && !err.isNetwork && err.status < 500) {
+        onError?.(mensajeError(err)); // p. ej. pedido mínimo o stock: no se oculta con un cálculo local
+      } else {
+        console.warn('Servidor no disponible. Usando cálculo local de contingencia.');
+        await calculateFleteLocalFallback(lat, lng);
+      }
     } finally {
       onCalculationStateChange(false);
     }
   };
 
-  // Cálculo local en caso de estar offline o sin backend
-  const calculateFleteLocalFallback = (lat: number, lng: number) => {
-    // Fórmula de Haversine local
-    const R = 6371; // km
-    const dLat = (lat - ORIGIN_LAT) * Math.PI / 180;
-    const dLon = (lng - ORIGIN_LNG) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(ORIGIN_LAT * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const rawHaversine = R * c;
-    const distanceKm = parseFloat((rawHaversine * 1.25).toFixed(2)); // Ruteo estimado
-
-    // Lógica matemática
-    const TARIFA_BASE = 350;
-    const PRECIO_KM = 12;
-    let productFactorCost = 0;
-    cartItems.forEach(item => {
-      productFactorCost += (item.quantity_tons || 0) * (item.factor_flete || 1.0);
-    });
-
-    const shippingCost = parseFloat((TARIFA_BASE + (distanceKm * PRECIO_KM) + productFactorCost).toFixed(2));
-
-    onFleteCalculated({
-      shippingCost,
-      distance: distanceKm,
-      source: 'haversine'
-    });
+  // Contingencia sin conexión: misma fórmula que el servidor con los parámetros guardados
+  const calculateFleteLocalFallback = async (lat: number, lng: number) => {
+    const params = await obtenerParametros();
+    onFleteCalculated(cotizarLocal(params, lat, lng, cartItems));
   };
 
-  // Manejador del slider manual offline
-  const handleOfflineDistanceChange = (km: number) => {
+  // Modo offline manual: el cliente indica la distancia por carretera. Se genera un punto al sur de la
+  // planta cuya distancia (línea recta × factor rural) coincide con ese valor, para que el servidor
+  // recalcule el mismo flete cuando el pedido se envíe.
+  const handleOfflineDistanceChange = async (km: number) => {
     setOfflineDistance(km);
-    
-    // Coordenadas mock para simular que seleccionó una ubicación
-    const simulatedCoords = {
-      lat: ORIGIN_LAT - (km / 111), // 1 grado lat = ~111km
-      lng: ORIGIN_LNG - (km / 111),
-    };
-    onLocationSelected(simulatedCoords);
-
-    const TARIFA_BASE = 350;
-    const PRECIO_KM = 12;
-    let productFactorCost = 0;
-    cartItems.forEach(item => {
-      productFactorCost += (item.quantity_tons || 0) * (item.factor_flete || 1.0);
-    });
-
-    const shippingCost = parseFloat((TARIFA_BASE + (km * PRECIO_KM) + productFactorCost).toFixed(2));
-    onFleteCalculated({
-      shippingCost,
-      distance: km,
-      source: 'haversine'
-    });
+    const params = await obtenerParametros();
+    const rectaKm = km / params.factor_correccion_rural;
+    const coords = { lat: params.origen.lat - rectaKm / 111.19, lng: params.origen.lng };
+    onLocationSelected(coords);
+    onFleteCalculated(cotizarLocal(params, coords.lat, coords.lng, cartItems));
   };
 
   return (
@@ -271,7 +206,7 @@ export default function MapComponent({
           <div className="flex items-center space-x-2 text-agro-600 bg-agro-50 p-3 rounded-lg border border-agro-100">
             <AlertCircle className="h-5 w-5 text-agro-accent shrink-0" />
             <p className="text-xs font-medium">
-              <strong>Modo de Contingencia Offline activo.</strong> No se requiere conexión a internet para esta cotización. Indique la distancia aproximada de su finca a San Ramón.
+              <strong>Modo de Contingencia Offline activo.</strong> Cotización estimada sin internet: indique la distancia aproximada de su finca a San Ramón. El pedido se enviará al servidor cuando vuelva la conexión y el flete definitivo se confirmará allí.
             </p>
           </div>
 

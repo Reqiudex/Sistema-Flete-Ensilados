@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, Sprout, Tractor, Droplets, Wheat, Plane } from 'lucide-react';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -7,80 +7,99 @@ import Confirmation from './components/Confirmation';
 import AdminDashboard from './components/AdminDashboard';
 import AuthScreen from './components/AuthScreen';
 import ToastContainer from './components/ToastContainer';
-import { Product, CartItem, Order, OrderItem, UserProfile, Toast } from './types';
-import { supabase, isSupabaseConfigured, getLocalProducts, saveLocalOrder } from './supabaseClient';
+import { Product, CartItem, Order, UserProfile, Toast, NewOrderPayload, FleteQuote } from './types';
+import * as api from './api';
 
 export default function App() {
   const [currentView, setView] = useState<string>('landing'); // landing, catalog, confirmation, admin
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsOffline, setProductsOffline] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
-  
-  // Auth state
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('esc_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('esc_token');
-  });
+
+  // Sesión de administrador: el token se valida con el servidor (GET /api/auth/me) al cargar
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(() => api.obtenerToken());
+  const [sessionChecked, setSessionChecked] = useState(() => !api.obtenerToken());
 
   // Toasts state
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = (toast: Omit<Toast, 'id'>) => {
+  const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { ...toast, id }]);
-  };
+  }, []);
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  const clearSession = () => {
+    setUser(null);
+    setToken(null);
+    try { localStorage.removeItem(api.CLAVE_TOKEN); } catch { /* sin almacenamiento */ }
+  };
+
   const handleLogin = (newUser: UserProfile, newToken: string) => {
+    try { localStorage.setItem(api.CLAVE_TOKEN, newToken); } catch { /* sin almacenamiento */ }
     setUser(newUser);
     setToken(newToken);
-    localStorage.setItem('esc_user', JSON.stringify(newUser));
-    localStorage.setItem('esc_token', newToken);
     setView('admin');
   };
 
   const handleLogout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('esc_user');
-    localStorage.removeItem('esc_token');
+    clearSession();
     setView('landing');
     addToast({ type: 'info', title: 'Sesión Cerrada', message: 'Ha salido del panel de administración.' });
   };
 
-  // Load products on mount
+  // Restaurar y validar la sesión guardada
   useEffect(() => {
-    loadProducts();
+    if (!api.obtenerToken()) return;
+    api.perfil()
+      .then(setUser)
+      .catch((err) => {
+        if (err instanceof api.ApiError && !err.isNetwork) clearSession();
+      })
+      .finally(() => setSessionChecked(true));
   }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .order('name');
-        
-        if (error) throw error;
-        if (data && data.length > 0) {
-          setProducts(data);
-          return;
-        }
-      }
-      
-      // Fallback
-      setProducts(getLocalProducts());
+      const { productos, desdeCache } = await api.obtenerProductos();
+      setProducts(productos);
+      setProductsOffline(desdeCache);
+      setProductsError(null);
     } catch (err) {
-      console.error('Error cargando productos, usando fallback local:', err);
-      setProducts(getLocalProducts());
+      setProductsError(api.mensajeError(err, 'No se pudo cargar el catálogo.'));
     }
-  };
+  }, []);
+
+  // Cargar catálogo y sincronizar pedidos guardados sin conexión
+  const sincronizar = useCallback(async () => {
+    if (api.pedidosPendientes().length === 0) return;
+    const { enviados, rechazados } = await api.sincronizarPedidos();
+    if (enviados.length > 0) {
+      addToast({
+        type: 'success',
+        title: 'Pedidos enviados',
+        message: enviados.map(o => o.order_code).join(', ') + ' registrados correctamente.',
+      });
+      loadProducts();
+    }
+    rechazados.forEach(r =>
+      addToast({ type: 'warning', title: `Pedido de ${r.nombre} no registrado`, message: r.motivo })
+    );
+  }, [addToast, loadProducts]);
+
+  useEffect(() => {
+    loadProducts();
+    sincronizar();
+    const alVolverRed = () => { loadProducts(); sincronizar(); };
+    window.addEventListener('online', alVolverRed);
+    return () => window.removeEventListener('online', alVolverRed);
+  }, [loadProducts, sincronizar]);
 
   // Cart operations
   const addToCart = (product: Product, qty: number) => {
@@ -89,7 +108,7 @@ export default function App() {
       if (existing) {
         return prev.map(item =>
           item.product.id === product.id
-            ? { ...item, quantityTons: item.quantityTons + qty }
+            ? { ...item, quantityTons: Math.round((item.quantityTons + qty) * 100) / 100 }
             : item
         );
       }
@@ -113,86 +132,33 @@ export default function App() {
     setCart([]);
   };
 
-  // Handle Order submit
-  const handleSubmitOrder = async (orderData: {
-    customerName: string;
-    customerPhone: string;
-    lat: number;
-    lng: number;
-    shippingCost: number;
-    totalAmount: number;
-    totalWeight: number;
-    paymentMethod: 'QR' | 'Transferencia' | 'WhatsApp';
-  }) => {
+  // Enviar pedido: el servidor recalcula precios, flete y totales y descuenta el stock.
+  // Devuelve null si todo salió bien o un mensaje de error para mostrar en el formulario.
+  const handleSubmitOrder = async (data: NewOrderPayload, quote: FleteQuote | null): Promise<string | null> => {
     try {
-      const newOrder: Order = {
-        customer_name: orderData.customerName,
-        customer_phone: orderData.customerPhone,
-        lat: orderData.lat,
-        lng: orderData.lng,
-        total_weight_tons: orderData.totalWeight,
-        shipping_cost: orderData.shippingCost,
-        total_amount: orderData.totalAmount,
-        payment_method: orderData.paymentMethod,
-        status: 'Pendiente'
-      };
-
-      if (isSupabaseConfigured && supabase) {
-        // Insert order in Supabase
-        const { data: orderResult, error: orderError } = await supabase
-          .from('orders')
-          .insert(newOrder)
-          .select()
-          .single();
-
-        if (orderError) throw orderError;
-
-        // Insert items
-        const orderItems: OrderItem[] = cart.map(item => ({
-          order_id: orderResult.id,
-          product_id: item.product.id,
-          quantity_tons: item.quantityTons,
-          subtotal: item.quantityTons * item.product.unit_price_ton
-        }));
-
-        const { error: itemsError } = await supabase
-          .from('order_items')
-          .insert(orderItems);
-
-        if (itemsError) throw itemsError;
-
-        // Attach items for the local state representation
-        const finalOrder: Order = {
-          ...orderResult,
-          items: cart.map(item => ({
-            product_id: item.product.id,
-            quantity_tons: item.quantityTons,
-            subtotal: item.quantityTons * item.product.unit_price_ton,
-            product: item.product
-          }))
-        };
-
-        setSubmittedOrder(finalOrder);
-      } else {
-        // Mock save order
-        const mockOrderWithItems = {
-          ...newOrder,
-          items: cart.map(item => ({
-            product_id: item.product.id,
-            quantity_tons: item.quantityTons,
-            subtotal: item.quantityTons * item.product.unit_price_ton,
-            product: item.product
-          }))
-        };
-        const saved = saveLocalOrder(mockOrderWithItems);
-        setSubmittedOrder(saved);
-      }
-
+      const { order, enviado } = await api.crearPedido(
+        data,
+        cart.map(i => ({
+          product_id: i.product.id,
+          quantity_tons: i.quantityTons,
+          name: i.product.name,
+          unit_price_ton: i.product.unit_price_ton,
+        })),
+        quote,
+      );
+      setSubmittedOrder(order);
       clearCart();
       setView('confirmation');
+      if (enviado) loadProducts();
+      else addToast({
+        type: 'warning',
+        title: 'Sin conexión',
+        message: 'Su pedido quedó guardado en este dispositivo y se enviará automáticamente al volver la conexión.',
+      });
+      return null;
     } catch (err) {
-      console.error('Error al registrar pedido:', err);
-      alert('Hubo un error registrando su pedido en el servidor. Por favor, descargue el borrador.');
+      if (err instanceof api.ApiError && err.code === 'STOCK_INSUFICIENTE') loadProducts();
+      return api.mensajeError(err, 'No se pudo registrar el pedido.');
     }
   };
 
@@ -270,9 +236,9 @@ export default function App() {
                   <p className="text-sm text-gray-500">Adiós a las llamadas infinitas. Flete matemático según distancia real.</p>
                 </div>
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center space-y-2">
-                  <div className="text-3xl font-extrabold text-agro-500">100% Offline</div>
+                  <div className="text-3xl font-extrabold text-agro-500">Modo Offline</div>
                   <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Resiliencia Rural</span>
-                  <p className="text-sm text-gray-500">Descargue su recibo PDF y coordine con el chofer sin internet.</p>
+                  <p className="text-sm text-gray-500">Cotice con el catálogo guardado, su pedido se envía solo al volver la señal y puede descargar su recibo PDF.</p>
                 </div>
               </div>
             </section>
@@ -354,6 +320,8 @@ export default function App() {
         {currentView === 'catalog' && (
           <CatalogCart
             products={products}
+            productsOffline={productsOffline}
+            productsError={productsError}
             cart={cart}
             addToCart={addToCart}
             removeFromCart={removeFromCart}
@@ -370,11 +338,13 @@ export default function App() {
         )}
 
         {currentView === 'admin' && (
-          user ? (
+          !sessionChecked ? (
+            <div className="py-24 text-center text-gray-400 text-sm">Verificando sesión...</div>
+          ) : user && token ? (
             <AdminDashboard
               user={user}
-              token={token || ''}
               onLogout={handleLogout}
+              onSessionExpired={() => { clearSession(); addToast({ type: 'warning', title: 'Sesión expirada', message: 'Inicie sesión nuevamente.' }); }}
               addToast={addToast}
             />
           ) : (
