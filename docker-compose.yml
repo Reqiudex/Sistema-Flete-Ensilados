@@ -17,8 +17,10 @@ services:
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - DATABASE_URL=${DATABASE_URL}
     networks:
-      - coolify
-      - default
+      coolify: {}
+      default:
+        aliases:
+          - ensilados-backend
     restart: always
 
   frontend:
