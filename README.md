@@ -55,6 +55,8 @@ FLETE       = viajes × costo_viaje + Σ (toneladas_i × factor_flete_i)
 cp .env.example .env        # completar JWT_SECRET (≥ 32 caracteres), ADMIN_EMAIL, ADMIN_PASSWORD y, si se usa, Supabase/Maps
 docker compose up -d --build
 ```
+
+**Producción en Coolify:** ver [docs/DESPLIEGUE-COOLIFY.md](docs/DESPLIEGUE-COOLIFY.md) (`docker-compose.coolify.yml`, Supabase propio en `dbtesis.cerice360.com`).
 Frontend: http://localhost:3000 · API: http://localhost:3001/api/health
 
 Generar un `JWT_SECRET`: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`

@@ -1,0 +1,38 @@
+# Ensilados Santa Cruz – despliegue en Coolify (Docker Compose desde GitHub)
+# Coolify: New Resource → Public/Private Repository → Build Pack "Docker Compose"
+#          → "Docker Compose Location": /docker-compose.coolify.yml
+# Dominio: asigne https://tesis.cherry.lat (o el suyo) al servicio "frontend", puerto 80.
+# Las variables se cargan en Coolify → Environment Variables (ver docs/DESPLIEGUE-COOLIFY.md).
+# La base de datos es el Supabase propio (servicio aparte) publicado en https://dbtesis.cerice360.com
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (mínimo 32 caracteres)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      SUPABASE_URL: ${SUPABASE_URL:?Defina SUPABASE_URL (https://dbtesis.cerice360.com)}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Defina SUPABASE_SERVICE_ROLE_KEY}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Defina ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Defina ADMIN_PASSWORD (mínimo 8 caracteres)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://tesis.cherry.lat}
+    expose:
+      - "3001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # La API se sirve en el mismo dominio (/api) mediante el proxy de Nginx
+        VITE_API_URL: /api
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "80"
+    restart: unless-stopped
