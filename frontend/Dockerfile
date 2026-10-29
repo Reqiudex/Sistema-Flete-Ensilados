@@ -1,5 +1,5 @@
 # Etapa 1: compilar la aplicación React
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /usr/src/app
 
 ARG VITE_API_URL=""

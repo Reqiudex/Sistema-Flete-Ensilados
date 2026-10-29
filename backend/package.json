@@ -4,7 +4,7 @@
   "description": "API REST de Ensilados Santa Cruz: catálogo, cálculo de flete, pedidos y administración",
   "main": "server.js",
   "private": true,
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
