@@ -67,7 +67,32 @@ function googleMapsKey() {
   return k;
 }
 
+/**
+ * Configuración de la pasarela de pagos QR (repositorio pasarela-pagos).
+ * Si falta alguna de las tres variables, el cobro por QR queda deshabilitado (el resto del sistema sigue funcionando).
+ */
+function pasarelaConfig() {
+  const baseUrl = (process.env.PASARELA_BASE_URL || '').trim().replace(/\/+$/, '');
+  const apiKey = (process.env.PASARELA_API_KEY || '').trim();
+  const secret = (process.env.PASARELA_SECRET || '').trim();
+  if (!baseUrl || !apiKey || !secret) return null;
+  const exp = Number(process.env.PASARELA_EXPIRA_SEGUNDOS);
+  return {
+    baseUrl,
+    apiKey,
+    secret,
+    expiraSegundos: Number.isFinite(exp) ? Math.min(900, Math.max(60, Math.round(exp))) : 600,
+  };
+}
+
+/** URL pública del sistema (return_url del checkout de pago). */
+function urlPublica() {
+  return (process.env.PUBLIC_URL || 'https://tesis.cherry.lat').trim().replace(/\/+$/, '');
+}
+
 module.exports = {
+  pasarelaConfig,
+  urlPublica,
   esProduccion,
   obtenerJwtSecret,
   jwtExpiraEn,

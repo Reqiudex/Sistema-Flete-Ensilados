@@ -6,11 +6,13 @@ const { crearLimitador } = require('../middleware/rateLimit');
 const pub = require('../controllers/publicController');
 const auth = require('../controllers/authController');
 const admin = require('../controllers/adminController');
+const pago = require('../controllers/pagoController');
 
 function crearRutas() {
   const r = express.Router();
   const limiteLogin = crearLimitador({ max: 10 });
   const limitePedidos = crearLimitador({ max: 60, ventanaMs: 60 * 60 * 1000 });
+  const limitePagos = crearLimitador({ max: 30, ventanaMs: 10 * 60 * 1000 });
   const soloSuper = requerirRol('Superadmin');
 
   r.get('/health', (req, res) => res.json({ estado: 'ok', hora: new Date().toISOString() }));
@@ -20,6 +22,9 @@ function crearRutas() {
   r.get('/flete-params', pub.parametros);
   r.post('/calculate-flete', pub.calcularFlete);
   r.post('/orders', limitePedidos, pub.crearPedido);
+  r.post('/orders/:codigo/pago', limitePagos, pago.iniciar);
+  r.get('/orders/:codigo/pago', crearLimitador({ max: 240, ventanaMs: 10 * 60 * 1000 }), pago.consultar);
+  r.post('/webhooks/pasarela', pago.webhook); // firma HMAC; cuerpo crudo (ver app.js)
 
   // Autenticación
   r.post('/auth/login', limiteLogin, auth.login);
@@ -38,6 +43,8 @@ function crearRutas() {
   a.get('/orders/:id', admin.obtenerPedido);
   a.patch('/orders/:id/status', admin.cambiarEstado);
   a.get('/orders/:id/history', admin.historialPedido);
+  a.post('/orders/:id/pago/verificar', admin.verificarPago);
+  a.patch('/orders/:id/pago', admin.confirmarPago);
   a.get('/stats', admin.estadisticas);
   a.get('/reports/orders.csv', admin.reporteCsv);
   a.get('/products', admin.listarProductos);

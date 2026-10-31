@@ -43,9 +43,17 @@ export default function CatalogCart({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [minWeight, setMinWeight] = useState<number>(PARAMETROS_POR_DEFECTO.peso_minimo_tons);
+  // El pago QR solo se ofrece si el servidor tiene la pasarela configurada (sin dato, se asume disponible)
+  const [qrDisponible, setQrDisponible] = useState(true);
 
   useEffect(() => {
-    obtenerParametros().then(p => setMinWeight(p.peso_minimo_tons));
+    obtenerParametros().then(p => {
+      setMinWeight(p.peso_minimo_tons);
+      if (p.pagos_qr === false) {
+        setQrDisponible(false);
+        setPaymentMethod(m => (m === 'QR' ? 'Transferencia' : m));
+      }
+    });
   }, []);
 
   // Temporary quantity values for product cards
@@ -433,8 +441,8 @@ export default function CatalogCart({
 
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Método de Pago</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['QR', 'Transferencia', 'WhatsApp'] as const).map((method) => (
+                  <div className={`grid ${qrDisponible ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+                    {(['QR', 'Transferencia', 'WhatsApp'] as const).filter((m) => m !== 'QR' || qrDisponible).map((method) => (
                       <button
                         key={method}
                         type="button"

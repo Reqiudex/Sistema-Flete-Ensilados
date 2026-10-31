@@ -18,6 +18,11 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://tesis.cherry.lat}
+      PASARELA_BASE_URL: ${PASARELA_BASE_URL:-}
+      PASARELA_API_KEY: ${PASARELA_API_KEY:-}
+      PASARELA_SECRET: ${PASARELA_SECRET:-}
+      PASARELA_EXPIRA_SEGUNDOS: ${PASARELA_EXPIRA_SEGUNDOS:-600}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
     restart: unless-stopped
 
   frontend:

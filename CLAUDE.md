@@ -14,7 +14,8 @@ React 18 + Vite + TS + Tailwind · Node/Express (MVC + services) · Supabase/Pos
 - Flete = `viajes × (tarifa_base + km × precio_km) + Σ(ton × factor_flete)`; `viajes = ⌈peso/capacidad⌉`; Haversine ×1,25 de contingencia. Defaults: 350 Bs, 12 Bs/km, 30 TM, mín. 0,5 TM. Fuente única: `backend/src/models/fleteModel.js` (el frontend replica en `api.ts → cotizarLocal`; mantenerlos iguales).
 - El servidor recalcula todo; nunca confiar en importes del cliente.
 - Stock y estados solo vía RPC SQL (`crear_pedido`, `actualizar_estado_pedido`); no hay borrado de pedidos (Cancelado repone stock).
-- Estados: Pendiente⇄En Camino → Entregado/Cancelado (finales).
+- Estados: Pendiente⇄En Camino → Entregado/Cancelado (finales). Pago aparte (`pago_estado`): Pendiente→Pagado/Vencido/Cancelado/Revision.
+- Pagos QR: solo el servidor habla con la pasarela (`pasarelaService`); un pago se confirma únicamente por webhook firmado o por consulta a la pasarela, y solo si el monto base coincide con el total del pedido. Nunca confiar en el navegador.
 - Sin secretos ni usuarios por defecto en el código; `.env` nunca se sube.
 
 ## Mapa

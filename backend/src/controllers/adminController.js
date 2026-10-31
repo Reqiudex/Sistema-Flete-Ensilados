@@ -7,6 +7,7 @@ const productRepo = require('../models/productRepository');
 const userRepo = require('../models/userRepository');
 const parametrosRepo = require('../models/parametrosFleteRepo');
 const orderService = require('../services/orderService');
+const pagoService = require('../services/pagoService');
 const statsService = require('../services/statsService');
 const { pedidosACsv } = require('../utils/csv');
 const v = require('../utils/validators');
@@ -51,6 +52,11 @@ const crearPedidoManual = envolver('crearPedidoManual', async (req, res) => {
 });
 const cambiarEstado = envolver('cambiarEstado', async (req, res) =>
   res.json(await orderService.cambiarEstado(req.params.id, req.body?.estado, req.usuario.email)));
+const verificarPago = envolver('verificarPago', async (req, res) => res.json(await pagoService.verificarAdmin(req.params.id)));
+const confirmarPago = envolver('confirmarPago', async (req, res) => {
+  if (req.body?.pago_estado !== 'Pagado') throw new ErrorNegocio('Solo se puede confirmar el pago ("Pagado").', 'PAGO_ESTADO_INVALIDO', 400);
+  res.json(await pagoService.confirmarManual(req.params.id));
+});
 const historialPedido = envolver('historialPedido', async (req, res) => res.json(await orderRepo.historial(req.params.id)));
 const estadisticas = envolver('estadisticas', async (req, res) => {
   const f = filtros(req.query);
@@ -121,7 +127,7 @@ const eliminarUsuario = envolver('eliminarUsuario', async (req, res) => {
 });
 
 module.exports = {
-  listarPedidos, obtenerPedido, crearPedidoManual, cambiarEstado, historialPedido, estadisticas, reporteCsv,
+  listarPedidos, obtenerPedido, crearPedidoManual, cambiarEstado, historialPedido, verificarPago, confirmarPago, estadisticas, reporteCsv,
   listarProductos, crearProducto, actualizarProducto, desactivarProducto,
   actualizarParametros, listarUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario,
 };

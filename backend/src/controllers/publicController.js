@@ -6,6 +6,7 @@ const parametrosRepo = require('../models/parametrosFleteRepo');
 const { ORIGEN } = require('../models/fleteModel');
 const orderService = require('../services/orderService');
 const { responderError } = require('../utils/errors');
+const pasarela = require('../services/pasarelaService');
 
 async function productos(req, res) {
   try {
@@ -17,7 +18,7 @@ async function productos(req, res) {
 
 async function parametros(req, res) {
   try {
-    res.json({ origen: ORIGEN, ...(await parametrosRepo.obtener()) });
+    res.json({ origen: ORIGEN, ...(await parametrosRepo.obtener()), pagos_qr: pasarela.habilitada() });
   } catch (e) {
     responderError(res, e, 'parametros');
   }

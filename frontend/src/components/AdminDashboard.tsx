@@ -172,6 +172,27 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
     }
   };
 
+  // Pagos: contrastar con la pasarela QR o confirmar manualmente (transferencia / WhatsApp verificados)
+  const handlePagoVerificar = async (orderId: string) => {
+    try {
+      const o = await api.verificarPagoAdmin(orderId);
+      addToast({ type: 'success', title: 'Pago verificado', message: `Estado del pago: ${o.payment_status}.` });
+      fetchOrders();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo verificar el pago.');
+    }
+  };
+  const handlePagoConfirmar = async (orderId: string) => {
+    if (!window.confirm('¿Confirmar que este pedido ya fue pagado? Úselo solo si verificó el depósito en el banco.')) return;
+    try {
+      await api.confirmarPagoAdmin(orderId);
+      addToast({ type: 'success', title: 'Pago confirmado', message: 'El pedido quedó marcado como pagado.' });
+      fetchOrders();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo confirmar el pago.');
+    }
+  };
+
   // Product CRUD Handlers
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -866,6 +887,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                       <th className="py-4 px-6 text-right">Flete</th>
                       <th className="py-4 px-6 text-right">Monto Total</th>
                       <th className="py-4 px-6 text-center">Estado</th>
+                      <th className="py-4 px-6 text-center">Pago</th>
                       <th className="py-4 px-6 text-center">Ruta Chofer / Acciones</th>
                     </tr>
                   </thead>
@@ -912,6 +934,28 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                                 <option key={st} value={st}>{st}</option>
                               ))}
                             </select>
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            <span className={`inline-block text-[11px] font-bold rounded-lg px-2.5 py-1 border ${
+                              order.payment_status === 'Pagado'
+                                ? 'text-green-400 border-green-500/30 bg-green-500/5'
+                                : order.payment_status === 'Revision'
+                                ? 'text-orange-400 border-orange-500/30 bg-orange-500/5'
+                                : order.payment_status === 'Vencido' || order.payment_status === 'Cancelado'
+                                ? 'text-red-400 border-red-500/30 bg-red-500/5'
+                                : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/5'
+                            }`}>
+                              {order.payment_status === 'Revision' ? 'Revisar' : order.payment_status || 'Pendiente'}
+                            </span>
+                            <span className="block text-[10px] text-dark-400 mt-1">{order.payment_method}</span>
+                            {order.payment_status !== 'Pagado' && order.status !== 'Cancelado' && (
+                              <span className="flex justify-center space-x-2 mt-1">
+                                {order.payment_method === 'QR' && (
+                                  <button onClick={() => handlePagoVerificar(order.id!)} className="text-[10px] underline text-agro-accent hover:text-white" title="Consultar a la pasarela">Verificar</button>
+                                )}
+                                <button onClick={() => handlePagoConfirmar(order.id!)} className="text-[10px] underline text-dark-300 hover:text-white" title="Marcar como pagado manualmente">Confirmar</button>
+                              </span>
+                            )}
                           </td>
                           <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
                             {order.status === 'En Camino' ? (

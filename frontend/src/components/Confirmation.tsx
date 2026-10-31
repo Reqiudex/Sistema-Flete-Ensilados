@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { CheckCircle2, Download, MessageSquare, Landmark, MapPin, Phone, User, Sprout, ArrowRight } from 'lucide-react';
 import { Order } from '../types';
+import PagoQr from './PagoQr';
 
 interface ConfirmationProps {
   order: Order;
@@ -236,7 +237,13 @@ export default function Confirmation({ order, onBackToStart }: ConfirmationProps
             </div>
           </div>
 
+          {/* Pago por QR (pasarela): solo pedidos ya registrados en el servidor */}
+          {order.payment_method === 'QR' && order.order_code && !order.pending_sync && (
+            <PagoQr codigo={order.order_code} />
+          )}
+
           {/* Bank details panel */}
+          {order.payment_method === 'Transferencia' && (
           <div className="border border-agro-100 bg-agro-50/50 rounded-2xl p-6 space-y-4">
             <div className="flex items-center space-x-2 text-agro-600 pb-2 border-b border-agro-100">
               <Landmark className="h-5 w-5 text-agro-accent" />
@@ -261,6 +268,7 @@ export default function Confirmation({ order, onBackToStart }: ConfirmationProps
               </div>
             </div>
           </div>
+          )}
 
           {/* Offline Warning banner */}
           <div className="text-xs text-gray-500 bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start space-x-2">

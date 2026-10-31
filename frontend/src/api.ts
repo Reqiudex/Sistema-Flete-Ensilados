@@ -7,7 +7,7 @@
  */
 import {
   FleteParams, FleteQuote, NewOrderPayload, Order, OrderItem, OrderStatus,
-  PaymentMethod, Product, UserProfile, UserRole,
+  PaymentMethod, PaymentStatus, Product, UserProfile, UserRole,
 } from './types';
 
 /* ------------------------------ Configuración ------------------------------ */
@@ -153,6 +153,8 @@ export function aPedido(p: any): Order {
     cost_logistics_bs: num(p.costo_logistico_bs),
     net_profit_bs: num(p.ganancia_neta_bs),
     payment_method: p.metodo_pago as PaymentMethod,
+    payment_status: (p.pago_estado || 'Pendiente') as PaymentStatus,
+    paid_at: p.pagado_en ?? null,
     status: p.estado as OrderStatus,
     created_at: p.creado_en,
     items: (p.detalle_pedido || []).map(aItem),
@@ -197,6 +199,40 @@ export async function obtenerParametros(): Promise<FleteParams> {
   } catch {
     return leer<FleteParams>(CLAVES.params) || PARAMETROS_POR_DEFECTO;
   }
+}
+
+/* ------------------------------ Pago por QR ------------------------------ */
+
+export interface PagoQr {
+  codigo_pedido: string;
+  pedido_estado: OrderStatus;
+  pago_estado: PaymentStatus;
+  total_bs: number;
+  /** Monto exacto que debe pagar el cliente (incluye el centavo libre que identifica el cobro) */
+  monto_a_pagar_bs: number | null;
+  checkout_url: string | null;
+  segundos_restantes: number;
+  pagado_en: string | null;
+}
+
+/** Solicita (o recupera) el cobro QR vigente de un pedido. */
+export function iniciarPagoQr(codigo: string): Promise<PagoQr> {
+  return http<PagoQr>(`/orders/${encodeURIComponent(codigo)}/pago`, { method: 'POST' });
+}
+
+/** Consulta el estado del pago (el servidor lo contrasta con la pasarela). */
+export function consultarPagoQr(codigo: string): Promise<PagoQr> {
+  return http<PagoQr>(`/orders/${encodeURIComponent(codigo)}/pago`);
+}
+
+/** Administración: contrasta el pago con la pasarela. */
+export async function verificarPagoAdmin(id: string): Promise<Order> {
+  return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago/verificar`, { method: 'POST', auth: true }));
+}
+
+/** Administración: confirma manualmente un pago (transferencia o WhatsApp verificados fuera del sistema). */
+export async function confirmarPagoAdmin(id: string): Promise<Order> {
+  return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago`, { method: 'PATCH', body: { pago_estado: 'Pagado' }, auth: true }));
 }
 
 /* --------------------------------- Catálogo --------------------------------- */

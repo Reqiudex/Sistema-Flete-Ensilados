@@ -15,7 +15,7 @@ function escapar(valor) {
 const CABECERA = [
   'Código', 'Fecha', 'Cliente', 'Teléfono', 'Productos', 'Peso (TM)', 'Distancia (km)',
   'Fuente de cálculo', 'Subtotal (Bs)', 'Flete (Bs)', 'Total (Bs)', 'Ganancia neta est. (Bs)',
-  'Método de pago', 'Estado',
+  'Método de pago', 'Estado', 'Pago', 'Pagado el',
 ];
 
 function pedidosACsv(pedidos = []) {
@@ -34,6 +34,8 @@ function pedidosACsv(pedidos = []) {
     p.ganancia_neta_bs,
     p.metodo_pago,
     p.estado,
+    p.pago_estado,
+    p.pagado_en ? new Date(p.pagado_en).toISOString().slice(0, 10) : '',
   ]);
   const lineas = [CABECERA, ...filas].map((fila) => fila.map(escapar).join(';'));
   return '﻿' + lineas.join('\r\n') + '\r\n';

@@ -8,6 +8,7 @@ async function resumen({ desde, hasta } = {}) {
   const pedidos = await orderRepo.listar({ desde, hasta });
   const validos = pedidos.filter((p) => p.estado !== 'Cancelado');
 
+  const pagados = validos.filter((p) => p.pago_estado === 'Pagado');
   const suma = (campo) => redondear(validos.reduce((a, p) => a + (Number(p[campo]) || 0), 0));
   const porEstado = {};
   for (const p of pedidos) porEstado[p.estado] = (porEstado[p.estado] || 0) + 1;
@@ -32,6 +33,10 @@ async function resumen({ desde, hasta } = {}) {
     costo_logistico_bs: suma('costo_logistico_bs'),
     ganancia_neta_bs: suma('ganancia_neta_bs'),
     toneladas_por_producto: porProducto,
+    pedidos_pagados: pagados.length,
+    cobrado_bs: redondear(pagados.reduce((a, p) => a + (Number(p.total_bs) || 0), 0)),
+    por_cobrar_bs: redondear(validos.filter((p) => p.pago_estado !== 'Pagado').reduce((a, p) => a + (Number(p.total_bs) || 0), 0)),
+    pagos_por_revisar: pedidos.filter((p) => p.pago_estado === 'Revision').length,
   };
 }
 

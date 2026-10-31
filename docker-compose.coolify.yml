@@ -20,6 +20,12 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:?Defina ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Defina ADMIN_PASSWORD (mínimo 8 caracteres)}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://tesis.cherry.lat}
+      # Pagos QR: pasarela-pagos (si se omiten, solo Transferencia y WhatsApp)
+      PASARELA_BASE_URL: ${PASARELA_BASE_URL:-https://apipagos.cerice360.com}
+      PASARELA_API_KEY: ${PASARELA_API_KEY:-}
+      PASARELA_SECRET: ${PASARELA_SECRET:-}
+      PASARELA_EXPIRA_SEGUNDOS: ${PASARELA_EXPIRA_SEGUNDOS:-600}
+      PUBLIC_URL: ${PUBLIC_URL:-https://tesis.cherry.lat}
     expose:
       - "3001"
     restart: unless-stopped

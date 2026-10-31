@@ -104,6 +104,35 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------
+-- Pagos por QR (pasarela-pagos): estado de pago del pedido y webhooks recibidos
+-- pago_estado: Pendiente | Pagado | Vencido | Cancelado | Revision (requiere atención del administrador)
+-- ------------------------------------------------------------
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_estado       TEXT NOT NULL DEFAULT 'Pendiente';
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_id           TEXT;                -- id del cobro en la pasarela
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_total_bs     NUMERIC(14, 2);      -- monto exacto a pagar (con centavo libre)
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_checkout_url TEXT;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_vence_en     TIMESTAMPTZ;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_intentos     INT NOT NULL DEFAULT 0;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagado_en         TIMESTAMPTZ;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'pedidos'::regclass AND conname = 'pedidos_pago_estado_check') THEN
+        ALTER TABLE pedidos ADD CONSTRAINT pedidos_pago_estado_check
+            CHECK (pago_estado IN ('Pendiente', 'Pagado', 'Vencido', 'Cancelado', 'Revision'));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_pedidos_pago_estado ON pedidos (pago_estado);
+CREATE INDEX IF NOT EXISTS idx_pedidos_pago_id     ON pedidos (pago_id) WHERE pago_id IS NOT NULL;
+
+-- Idempotencia de webhooks: cada entrega (X-Pasarela-Delivery) se procesa una sola vez
+CREATE TABLE IF NOT EXISTS pagos_webhook_entregas (
+    entrega_id   TEXT PRIMARY KEY,
+    evento       TEXT NOT NULL,
+    pedido_id    UUID REFERENCES pedidos(id) ON DELETE CASCADE,
+    recibido_en  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ------------------------------------------------------------
 -- detalle_pedido (HU03): una línea por producto y pedido
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS detalle_pedido (
@@ -267,6 +296,7 @@ ALTER TABLE pedidos           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE detalle_pedido    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_pedidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parametros_flete  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos_webhook_entregas ENABLE ROW LEVEL SECURITY;
 
 -- Se eliminan políticas permisivas de la versión 1 si existían
 DROP POLICY IF EXISTS "productos_admin_full"        ON productos;

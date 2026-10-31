@@ -29,6 +29,14 @@ Lea los términos y marque la casilla de aceptación (incluye el consentimiento 
 ### 1.5 Confirmación
 Recibirá un **código de pedido** (formato `ESC-1004`). Desde esa pantalla puede **descargar el comprobante en PDF** y **enviar el resumen por WhatsApp** a la empresa. El código y el comprobante no son documentos fiscales; la factura se emite aparte.
 
+### 1.5.1 Pagar con QR
+Si eligió **QR** como método de pago, en la pantalla de confirmación pulse **Generar cobro QR**:
+1. El sistema muestra el **monto exacto** que debe pagar, con centavos (por ejemplo *Bs 4 850,01*). **Pague exactamente ese monto**: los centavos permiten identificar su pago automáticamente.
+2. Pulse **Abrir código QR y pagar**, escanee el QR con la aplicación de su banco y pague. El cobro tiene una cuenta regresiva (10 minutos por defecto).
+3. Mantenga abierta la pantalla: cuando el banco confirme el pago aparecerá **Pago confirmado**. Puede tardar un par de minutos.
+4. Si el tiempo vence antes de pagar, pulse **Generar cobro QR** de nuevo (no pague un cobro vencido). Si pagó un monto distinto o fuera de tiempo, el pedido queda **en revisión** y el equipo lo confirmará.
+Si el pago por QR no está disponible, solo verá las opciones *Transferencia* y *WhatsApp*.
+
 ### 1.6 Trabajar sin señal (zonas rurales)
 - Si no hay conexión, el catálogo muestra el **último catálogo guardado** y aparece un aviso.
 - Si el mapa de Google no carga, pulse **Usar Cotizador Offline** e indique con el deslizador la **distancia aproximada** a San Ramón. El flete se estima con la misma fórmula del servidor.
@@ -65,7 +73,7 @@ Recibirá un **código de pedido** (formato `ESC-1004`). Desde esa pantalla pued
 | Contraseña propia y 2FA | ✔ | ✔ |
 
 ### 2.2 Estadísticas (HU09)
-Pestaña **Estadísticas & CRM**: ventas totales, ganancia neta estimada, toneladas, pedidos pendientes, flete promedio y gráficos (tendencia mensual, ganancia vs. costos, ventas por producto). Los **pedidos cancelados no se cuentan**. Use el filtro **Desde / Hasta** de la pestaña *Gestión Pedidos* para acotar el período; el panel se actualiza con ese rango. **Exportar Reporte PDF** genera el informe de lo que está en pantalla.
+Pestaña **Estadísticas & CRM**: ventas totales, ganancia neta estimada, toneladas, pedidos pendientes, **cobrado y por cobrar**, flete promedio y gráficos (tendencia mensual, ganancia vs. costos, ventas por producto). Los **pedidos cancelados no se cuentan**. Use el filtro **Desde / Hasta** de la pestaña *Gestión Pedidos* para acotar el período; el panel se actualiza con ese rango. **Exportar Reporte PDF** genera el informe de lo que está en pantalla.
 > Costos y ganancia son **estimaciones**: se calculan con porcentajes configurables (por defecto 60 % del subtotal para mercadería y 70 % del flete para logística).
 
 ### 2.3 Gestión de pedidos (HU08)
@@ -75,6 +83,7 @@ Pestaña **Gestión Pedidos**:
 - **Cancelar** (icono ✕) pide confirmación y **devuelve el stock** al inventario. Los pedidos no se eliminan: quedan registrados con su historial de estados (quién y cuándo).
 - En pedidos *En Camino* el botón **Ruta** abre Google Maps con el trayecto planta → finca para el chofer.
 - **Exportar CSV** descarga los pedidos filtrados (separador `;`, abre directo en Excel).
+- La columna **Pago** muestra *Pendiente*, *Pagado*, *Vencido*, *Cancelado* o *Revisar*. Los pagos por QR se confirman solos (webhook de la pasarela). **Verificar** consulta a la pasarela en ese momento. **Confirmar** marca un pago manualmente: úselo solo después de comprobar el depósito en el banco (transferencias o WhatsApp). Un pago en **Revisar** (monto distinto, o pedido ya cancelado) requiere que usted decida si lo acepta o lo devuelve.
 - **Nuevo Pedido Manual** registra una venta directa: cliente, celular, método de pago, producto, toneladas y coordenadas. El **flete y el total se calculan solos** y se descuenta el stock.
 
 ### 2.4 Productos (HU07)

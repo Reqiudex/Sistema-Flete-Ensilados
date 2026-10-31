@@ -15,6 +15,11 @@ Rutas `/admin/*` y las marcadas 🔒 requieren `Authorization: Bearer <token>`. 
 | `POST /orders` | Registra un pedido (máx. 60/hora por IP). Body: `{cliente_nombre, cliente_telefono, latitud, longitud, metodo_pago, items:[{producto_id, cantidad_tons}]}` → `201` pedido completo. El servidor **ignora cualquier importe** enviado |
 
 Códigos de error frecuentes: `NOMBRE_INVALIDO`, `TELEFONO_INVALIDO`, `COORDENADAS_INVALIDAS`, `COORDENADAS_FUERA_DE_RANGO`, `METODO_PAGO_INVALIDO`, `ITEMS_VACIOS`, `CANTIDAD_INVALIDA`, `PESO_MINIMO` (400); `PRODUCTO_NO_DISPONIBLE`, `STOCK_INSUFICIENTE` (409).
+| `POST /orders/:codigo/pago` | Solicita (o recupera) el cobro QR vigente del pedido (`metodo_pago = QR`). `201` → `{codigo_pedido, pago_estado, monto_a_pagar_bs, checkout_url, segundos_restantes}`. `503 PAGO_QR_NO_DISPONIBLE` si la pasarela no está configurada o degradada |
+| `GET /orders/:codigo/pago` | Estado del pago (el servidor lo contrasta con la pasarela mientras esté pendiente). Solo devuelve datos mínimos, nunca datos del cliente |
+| `POST /webhooks/pasarela` | **Solo para la pasarela.** Cuerpo crudo firmado (`X-Pasarela-Signature` = HMAC-SHA256 de `timestamp.cuerpo`). `401` si la firma o el timestamp (±5 min) no son válidos. Idempotente por `X-Pasarela-Delivery` |
+
+`GET /flete-params` incluye `pagos_qr` (boolean): indica si el pago QR está disponible.
 
 ## Autenticación
 
@@ -39,6 +44,8 @@ Login y verify-2fa: máx. 10 intentos / 15 min por IP.
 | `GET /admin/orders/:id` · `GET /admin/orders/:id/history` | Pedido / historial de estados |
 | `PATCH /admin/orders/:id/status` | `{estado}`. Transiciones: Pendiente→En Camino/Entregado/Cancelado; En Camino→Pendiente/Entregado/Cancelado; Entregado y Cancelado son finales. Cancelar **devuelve el stock** |
 | `GET /admin/stats?desde=&hasta=` | Totales (ingresos, fletes, toneladas, costos y ganancia estimados, por estado y producto); excluye cancelados |
+| `POST /admin/orders/:id/pago/verificar` | Contrasta el pago QR con la pasarela y devuelve el pedido |
+| `PATCH /admin/orders/:id/pago` | `{pago_estado:"Pagado"}`: confirma manualmente un pago (transferencia / WhatsApp verificados en el banco) |
 | `GET /admin/reports/orders.csv` | CSV (`;`, UTF-8 con BOM, compatible con Excel) |
 | `GET /admin/products` · `POST` · `PUT /:id` | Catálogo completo (incluye inactivos) / crear / modificar (también `activo`) |
 | `DELETE /admin/products/:id` 🔑 | Desactiva el producto (los pedidos históricos se conservan) |
@@ -63,3 +70,10 @@ Login y verify-2fa: máx. 10 intentos / 15 min por IP.
   "creado_en": "ISO-8601", "detalle_pedido": [{ "producto_id": "…", "cantidad_tons": 10, "precio_ton_bs": 450, "subtotal_bs": 4500, "producto": {"id":"…","nombre":"Silo de Maíz"} }] }
 ```
 Los costos y la ganancia son **estimaciones** calculadas con los porcentajes configurables (60 % de la mercadería y 70 % del flete por defecto).
+
+## Pago de un pedido
+`pago_estado`: `Pendiente` → `Pagado` | `Vencido` | `Cancelado` | `Revision`. Es independiente del estado logístico del pedido.
+- El cobro se crea con `amount_cents = round(total_bs × 100)`; la pasarela suma un centavo libre que identifica el pago (`pago_total_bs`).
+- `Pagado` solo se acepta si el monto base del cobro coincide con el total del pedido; si no, o si el pedido ya estaba cancelado, queda en `Revision` para decisión del administrador (posible devolución).
+- Un `Pagado` nunca se degrada por un evento posterior (`payment.expired` tardío).
+- Campos del pedido: `pago_estado, pago_id, pago_total_bs, pago_checkout_url, pago_vence_en, pago_intentos, pagado_en`.

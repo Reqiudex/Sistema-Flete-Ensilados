@@ -24,6 +24,7 @@ export interface OrderItem {
 
 export type OrderStatus = 'Pendiente' | 'En Camino' | 'Entregado' | 'Cancelado';
 export type PaymentMethod = 'QR' | 'Transferencia' | 'WhatsApp';
+export type PaymentStatus = 'Pendiente' | 'Pagado' | 'Vencido' | 'Cancelado' | 'Revision';
 
 export interface Order {
   id?: string;
@@ -42,6 +43,8 @@ export interface Order {
   cost_logistics_bs?: number;
   net_profit_bs?: number;
   payment_method: PaymentMethod;
+  payment_status?: PaymentStatus;
+  paid_at?: string | null;
   status: OrderStatus;
   created_at?: string;
   items?: OrderItem[];
@@ -80,6 +83,8 @@ export interface FleteParams {
   peso_minimo_tons: number;
   pct_costo_mercaderia: number;
   pct_costo_logistico: number;
+  /** true cuando el servidor tiene configurada la pasarela de pagos QR */
+  pagos_qr?: boolean;
 }
 
 export type UserRole = 'Admin' | 'Superadmin';

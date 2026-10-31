@@ -10,7 +10,8 @@
  *   { id, codigo_pedido, cliente_nombre, cliente_telefono, latitud, longitud, distancia_km,
  *     fuente_calculo, viajes, peso_total_tons, subtotal_bs, costo_flete_bs, total_bs,
  *     costo_mercaderia_bs, costo_logistico_bs, ganancia_neta_bs, metodo_pago, estado,
- *     creado_en, actualizado_en,
+ *     pago_estado ('Pendiente'|'Pagado'|'Vencido'|'Cancelado'|'Revision'), pago_id, pago_total_bs, pago_checkout_url,
+ *     pago_vence_en, pago_intentos, pagado_en, creado_en, actualizado_en,
  *     detalle_pedido: [{ id, producto_id, cantidad_tons, precio_ton_bs, subtotal_bs, producto:{id,nombre} }] }
  */
 'use strict';
@@ -36,7 +37,7 @@ const SELECT_PEDIDO = `
 
 const CAMPOS_NUMERICOS = [
   'latitud', 'longitud', 'distancia_km', 'peso_total_tons', 'subtotal_bs', 'costo_flete_bs',
-  'total_bs', 'costo_mercaderia_bs', 'costo_logistico_bs', 'ganancia_neta_bs', 'viajes',
+  'total_bs', 'costo_mercaderia_bs', 'costo_logistico_bs', 'ganancia_neta_bs', 'viajes', 'pago_total_bs', 'pago_intentos',
 ];
 
 function normalizar(fila) {
@@ -69,6 +70,7 @@ let memoria = [];
 let historialMemoria = [];
 let contador = 1000;
 let sembrado = false;
+let entregasMemoria = new Set();
 
 function sembrarDemo() {
   if (sembrado) return;
@@ -102,6 +104,9 @@ function sembrarDemo() {
       ...calcularFinancieros({ subtotal_bs: subtotal, costo_flete_bs: d.flete, total_bs: total }),
       metodo_pago: d.pago,
       estado: d.estado,
+      pago_estado: d.estado === 'Entregado' ? 'Pagado' : 'Pendiente',
+      pago_intentos: 0,
+      pagado_en: d.estado === 'Entregado' ? d.fecha : null,
       creado_en: d.fecha,
       actualizado_en: d.fecha,
       detalle_pedido: [
@@ -158,6 +163,9 @@ async function crear({ pedido, items, usuario = 'cliente' }) {
     ...pedido,
     ...calcularFinancieros(pedido, await parametrosRepo.obtener()),
     estado: 'Pendiente',
+    pago_estado: 'Pendiente',
+    pago_intentos: 0,
+    pagado_en: null,
     creado_en: ahora,
     actualizado_en: ahora,
     detalle_pedido: items.map((i) => ({
@@ -257,11 +265,64 @@ async function historial(id) {
   return historialMemoria.filter((h) => h.pedido_id === id).map((h) => ({ ...h }));
 }
 
+async function obtenerPorCodigo(codigo) {
+  const db = getSupabase();
+  const c = String(codigo || '').trim().toUpperCase();
+  if (!/^ESC-\d{3,10}$/.test(c)) return null;
+  if (db) {
+    const { data, error } = await db.from('pedidos').select(SELECT_PEDIDO).eq('codigo_pedido', c).maybeSingle();
+    if (error) throw new ErrorNegocio('No se pudo consultar el pedido.', 'ERROR_CONSULTA', 500);
+    return normalizar(data);
+  }
+  sembrarDemo();
+  const p = memoria.find((x) => x.codigo_pedido === c);
+  return p ? JSON.parse(JSON.stringify(p)) : null;
+}
+
+const CAMPOS_PAGO = ['pago_estado', 'pago_id', 'pago_total_bs', 'pago_checkout_url', 'pago_vence_en', 'pago_intentos', 'pagado_en'];
+
+/** Actualiza únicamente los campos de pago de un pedido (no toca estado, stock ni importes). */
+async function actualizarPago(id, campos) {
+  const cambios = {};
+  for (const k of CAMPOS_PAGO) if (campos[k] !== undefined) cambios[k] = campos[k];
+  const db = getSupabase();
+  if (db) {
+    if (!UUID.test(String(id))) throw new ErrorNegocio('Pedido no encontrado.', 'PEDIDO_NO_ENCONTRADO', 404);
+    const { error } = await db.from('pedidos').update({ ...cambios, actualizado_en: new Date().toISOString() }).eq('id', id);
+    if (error) {
+      console.error('[Pedido] Error al actualizar pago:', error.message);
+      throw new ErrorNegocio('No se pudo actualizar el pago del pedido.', 'ERROR_ACTUALIZACION', 500);
+    }
+    return obtenerPorId(id);
+  }
+  sembrarDemo();
+  const p = memoria.find((x) => x.id === id);
+  if (!p) throw new ErrorNegocio('Pedido no encontrado.', 'PEDIDO_NO_ENCONTRADO', 404);
+  Object.assign(p, cambios, { actualizado_en: new Date().toISOString() });
+  return JSON.parse(JSON.stringify(p));
+}
+
+/** Registra la entrega de un webhook. Devuelve false si ya se había procesado (idempotencia). */
+async function registrarEntregaWebhook(entregaId, evento, pedidoId) {
+  const db = getSupabase();
+  if (db) {
+    const { error } = await db.from('pagos_webhook_entregas').insert({ entrega_id: entregaId, evento, pedido_id: pedidoId });
+    if (!error) return true;
+    if (error.code === '23505') return false;
+    console.error('[Webhook] Error al registrar entrega:', error.message);
+    throw new ErrorNegocio('No se pudo registrar el webhook.', 'ERROR_BASE_DATOS', 500);
+  }
+  if (entregasMemoria.has(entregaId)) return false;
+  entregasMemoria.add(entregaId);
+  return true;
+}
+
 function _reset() {
+  entregasMemoria = new Set();
   memoria = [];
   historialMemoria = [];
   contador = 1000;
   sembrado = false;
 }
 
-module.exports = { crear, listar, obtenerPorId, actualizarEstado, historial, rangoFechas, _reset };
+module.exports = { crear, listar, obtenerPorId, obtenerPorCodigo, actualizarPago, registrarEntregaWebhook, actualizarEstado, historial, rangoFechas, _reset };
