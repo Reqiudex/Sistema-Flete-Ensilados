@@ -6,6 +6,8 @@ function crearLimitador({ max = 10, ventanaMs = 15 * 60 * 1000, clave = (req) =>
   const limitador = (req, res, next) => {
     const k = clave(req);
     const ahora = Date.now();
+    // Evita que el mapa crezca sin límite con muchas IPs distintas
+    if (intentos.size > 10000) for (const [c, r] of intentos) if (ahora > r.expira) intentos.delete(c);
     const reg = intentos.get(k);
     if (!reg || ahora > reg.expira) {
       intentos.set(k, { n: 1, expira: ahora + ventanaMs });

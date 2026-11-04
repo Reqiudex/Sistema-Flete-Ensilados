@@ -312,7 +312,7 @@ export default function CatalogCart({
                   </div>
                   <div className="flex justify-between text-base font-bold text-gray-800">
                     <span>Subtotal material:</span>
-                    <span>{cartSubtotal.toLocaleString()} Bs.</span>
+                    <span>{cartSubtotal.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.</span>
                   </div>
                   {cartTotalWeight < minWeight && (
                     <p className="text-[11px] text-red-600">Pedido mínimo: {minWeight} toneladas.</p>
@@ -360,7 +360,7 @@ export default function CatalogCart({
 
             <div className="pt-4 border-t border-gray-200">
               <h3 className="font-bold text-gray-800 text-base mb-2">D. Pagos digitales y normativa financiera</h3>
-              <p>Actualmente, este sistema no incorpora mecanismos de pago electrónico en línea (tarjetas, débito automático) dentro de la plataforma. Los pagos se coordinan de forma administrativa y externa según los métodos acordados, cumpliendo la normativa financiera vigente (ASFI) aplicable a operaciones comerciales.</p>
+              <p>El sistema no procesa tarjetas ni débitos automáticos ni guarda datos bancarios. El pago por QR se realiza desde la aplicación de su banco con el QR de la empresa: usted paga el monto exacto indicado (con centavos) y la confirmación llega de forma automática al conciliarse el depósito. También puede pagar por transferencia, en efectivo o coordinarlo por WhatsApp; esos pagos los verifica el personal administrativo. Todo conforme a la normativa financiera vigente (ASFI) aplicable a operaciones comerciales.</p>
             </div>
           </div>
 
@@ -468,7 +468,7 @@ export default function CatalogCart({
               <div className="space-y-2 text-sm text-gray-600">
                 <div className="flex justify-between">
                   <span>Subtotal Material:</span>
-                  <span className="font-semibold">{cartSubtotal.toLocaleString()} Bs.</span>
+                  <span className="font-semibold">{cartSubtotal.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Distancia Estimada:</span>
@@ -477,7 +477,7 @@ export default function CatalogCart({
                 <div className="flex justify-between">
                   <span>Costo de Flete Estimado:</span>
                   <span className="font-bold text-agro-500">
-                    {fleteCost > 0 ? `${fleteCost.toLocaleString()} Bs.` : '0 Bs.'}
+                    {fleteCost > 0 ? `${fleteCost.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.` : '0 Bs.'}
                   </span>
                 </div>
                 {distance > 0 && (
@@ -496,7 +496,7 @@ export default function CatalogCart({
 
               <div className="border-t border-gray-100 pt-3 flex justify-between text-lg font-extrabold text-gray-900">
                 <span>Total Estimado:</span>
-                <span className="text-agro-600">{totalAmount.toLocaleString()} Bs.</span>
+                <span className="text-agro-600">{totalAmount.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.</span>
               </div>
 
               {formError && step === 'checkout' && (

@@ -83,11 +83,11 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
 
   if (pago && CONFIRMADO.includes(pago.pago_estado)) {
     return (
-      <div className="border border-green-200 bg-green-50 dark:bg-green-950/40 dark:border-green-800 rounded-2xl p-6 flex items-center space-x-3" role="status">
+      <div className="border border-green-200 bg-green-50 rounded-2xl p-6 flex items-center space-x-3" role="status">
         <CheckCircle2 className="h-8 w-8 text-green-600 shrink-0" />
         <div>
-          <h3 className="font-bold text-green-800 dark:text-green-300">Pago confirmado</h3>
-          <p className="text-xs text-green-700 dark:text-green-400">
+          <h3 className="font-bold text-green-800">Pago confirmado</h3>
+          <p className="text-xs text-green-700">
             Recibimos su pago de Bs {fmt(pago.monto_a_pagar_bs ?? pago.total_bs)}. Su pedido continúa su proceso.
           </p>
         </div>

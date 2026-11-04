@@ -368,12 +368,15 @@ export default function App() {
           !sessionChecked ? (
             <div className="py-24 text-center text-gray-400 text-sm">Verificando sesión...</div>
           ) : user && token ? (
-            <AdminDashboard
-              user={user}
-              onLogout={handleLogout}
-              onSessionExpired={() => { clearSession(); addToast({ type: 'warning', title: 'Sesión expirada', message: 'Inicie sesión nuevamente.' }); }}
-              addToast={addToast}
-            />
+            // El panel usa tarjetas translúcidas pensadas para fondo oscuro: se le da su propio fondo
+            <div className="bg-dark-950 text-white">
+              <AdminDashboard
+                user={user}
+                onLogout={handleLogout}
+                onSessionExpired={() => { clearSession(); addToast({ type: 'warning', title: 'Sesión expirada', message: 'Inicie sesión nuevamente.' }); }}
+                addToast={addToast}
+              />
+            </div>
           ) : (
             <AuthScreen
               onLogin={handleLogin}

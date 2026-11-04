@@ -485,3 +485,52 @@ test('PAGOS_QR_HABILITADO=false desactiva el cobro aunque haya credenciales; PAS
     delete process.env.PASARELA_API_URL;
   }
 });
+
+test('Integración por HTTP con la pasarela simulada: firma real, nonce, centavo único, checkout y webhook firmado', async () => {
+  const { crearApp } = require('../src/app');
+  const api = crearApp().listen(0);
+  await new Promise((ok) => api.once('listening', ok));
+  process.env.SIM_SECRET = 'sk_integracion';
+  process.env.SIM_API_KEY = 'pk_integracion';
+  process.env.SIM_WEBHOOK_URL = `http://127.0.0.1:${api.address().port}/api/pagos/webhook`;
+  delete require.cache[require.resolve('../scripts/pasarela-simulada')];
+  const { servidor: sim } = require('../scripts/pasarela-simulada');
+  sim.listen(0);
+  await new Promise((ok) => sim.once('listening', ok));
+  const simUrl = `http://127.0.0.1:${sim.address().port}`;
+  process.env.PASARELA_BASE_URL = simUrl;
+  process.env.PASARELA_API_KEY = 'pk_integracion';
+  process.env.PASARELA_SECRET = 'sk_integracion';
+  pasarela.__setFetch(null); // fetch real
+  try {
+    const st = await pasarela.estadoPasarela();
+    assert.equal(st.accepting_payments, true, 'la firma de la petición es aceptada por el simulador');
+
+    const a = await pedidoQr();
+    const b = await pedidoQr();
+    assert.equal(a.pago.pago_estado, 'Pendiente');
+    assert.notEqual(a.pago.monto_a_pagar_bs, b.pago.monto_a_pagar_bs, 'mismo monto base → centavo distinto');
+    assert.equal(Math.round(a.pago.monto_a_pagar_bs * 100) - require('../src/services/pagoService').aCentavos(a.total_bs), 1);
+
+    const pagina = await (await fetch(simUrl + new URL(a.pago.checkout_url).pathname)).text();
+    assert.match(pagina, new RegExp(`Bs ${a.pago.monto_a_pagar_bs.toFixed(2)}`));
+
+    const cobroId = (await orderRepo.obtenerPorId(a.id)).pago_id;
+    const r = await fetch(`${simUrl}/simular/pagar/${cobroId}`, { method: 'POST', redirect: 'manual' });
+    assert.equal(r.status, 303);
+    assert.equal((await orderRepo.obtenerPorId(a.id)).pago_estado, 'Pagado', 'el webhook firmado llegó y se aplicó');
+
+    // cancelar el otro pedido anula su cobro en el simulador
+    await llamar(admin.cambiarEstado, { params: { id: b.id }, body: { estado: 'Cancelado' }, usuario: ADMIN });
+    const cobroB = await pasarela.obtenerCobro((await orderRepo.obtenerPorId(b.id)).pago_id);
+    assert.equal(cobroB.status, 'cancelled');
+
+    // credenciales incorrectas → 401 del simulador → error controlado
+    process.env.PASARELA_SECRET = 'sk_otro';
+    await assert.rejects(pasarela.estadoPasarela(), (e) => e.status === 502 || e.codigo === 'PAGO_QR_ERROR');
+  } finally {
+    sim.close();
+    api.close();
+    for (const k of ['SIM_SECRET', 'SIM_API_KEY', 'SIM_WEBHOOK_URL']) delete process.env[k];
+  }
+});

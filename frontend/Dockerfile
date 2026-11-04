@@ -8,13 +8,14 @@ ENV VITE_API_URL=$VITE_API_URL \
     VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-# Etapa 2: servir con Nginx
-FROM nginx:1.27-alpine
+# Etapa 2: servir con Nginx sin privilegios (no root, puerto 8080)
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=build /usr/src/app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:8080/salud || exit 1
 CMD ["nginx", "-g", "daemon off;"]

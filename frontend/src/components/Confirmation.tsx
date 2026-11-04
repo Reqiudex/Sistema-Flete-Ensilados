@@ -11,6 +11,8 @@ interface ConfirmationProps {
   onBackToStart: () => void;
 }
 
+const bs = (n: number) => n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function Confirmation({ order, pago = null, onBackToStart }: ConfirmationProps) {
   
   // Generación del PDF ligero client-side con jsPDF
@@ -104,12 +106,12 @@ export default function Confirmation({ order, pago = null, onBackToStart }: Conf
       // Flete y Total
       doc.setFont('Helvetica', 'bold');
       doc.text('Costo de Envío (Flete):', 130, currentY + 2);
-      doc.text(`${order.shipping_cost.toLocaleString()} Bs.`, 170, currentY + 2);
+      doc.text(`${order.shipping_cost.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.`, 170, currentY + 2);
 
       doc.setFontSize(12);
       doc.setTextColor(27, 67, 50);
       doc.text('TOTAL GENERAL:', 130, currentY + 10);
-      doc.text(`${order.total_amount.toLocaleString()} Bs.`, 170, currentY + 10);
+      doc.text(`${order.total_amount.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.`, 170, currentY + 10);
 
       // Instrucciones de Pago Bancario
       currentY += 25;
@@ -232,11 +234,11 @@ export default function Confirmation({ order, pago = null, onBackToStart }: Conf
             </div>
             <div className="flex justify-between text-sm text-gray-600">
               <span>Costo de Flete Logístico:</span>
-              <span className="font-bold text-gray-800">{order.shipping_cost.toLocaleString()} Bs.</span>
+              <span className="font-bold text-gray-800">{bs(order.shipping_cost)} Bs.</span>
             </div>
             <div className="border-t border-gray-200 pt-3 flex justify-between text-xl font-extrabold text-gray-900">
-              <span>Monto Total a Depositar:</span>
-              <span className="text-agro-500">{order.total_amount.toLocaleString()} Bs.</span>
+              <span>{order.payment_method === 'QR' ? 'Total del Pedido:' : 'Monto Total a Depositar:'}</span>
+              <span className="text-agro-500">{bs(order.total_amount)} Bs.</span>
             </div>
           </div>
 

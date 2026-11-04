@@ -1,40 +1,66 @@
-# Ensilados Santa Cruz – despliegue con Docker
+# Ensilados Santa Cruz – ejecución local con Docker
 # Uso:  cp .env.example .env   (completar valores)   y luego   docker compose up -d --build
+# Sin SUPABASE_URL la API funciona en modo memoria (demostración). Abra http://localhost:${WEB_PORT:-3000}
 services:
   backend:
     build:
       context: ./backend
-    container_name: ensilados-backend
     ports:
-      - "3001:3001"
+      - "127.0.0.1:${API_PORT:-3001}:3001"
     environment:
       PORT: 3001
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (mínimo 32 caracteres) en el archivo .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-public}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://tesis.cherry.lat}
-      PASARELA_BASE_URL: ${PASARELA_BASE_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      PAGOS_QR_HABILITADO: ${PAGOS_QR_HABILITADO:-true}
+      PASARELA_API_URL: ${PASARELA_API_URL:-}
       PASARELA_API_KEY: ${PASARELA_API_KEY:-}
       PASARELA_SECRET: ${PASARELA_SECRET:-}
       PASARELA_EXPIRA_SEGUNDOS: ${PASARELA_EXPIRA_SEGUNDOS:-600}
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      PAGOS_RECONCILIAR_SEGUNDOS: ${PAGOS_RECONCILIAR_SEGUNDOS:-60}
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       args:
-        # Se incorporan al compilar la aplicación (no son secretos: la clave de Maps debe restringirse por dominio)
-        VITE_API_URL: ${VITE_API_URL:-}
+        # La API va por el proxy de Nginx en el mismo origen (/api)
+        VITE_API_URL: ${VITE_API_URL:-/api}
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
-    container_name: ensilados-frontend
     ports:
-      - "3000:80"
+      - "${WEB_PORT:-3000}:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Pasarela SIMULADA para demostración y pruebas locales (no usar en producción).
+  #   docker compose --profile simulador up -d --build
+  # y en .env: PASARELA_API_URL=http://pasarela-simulada:8099  PASARELA_API_KEY=pk_simulada  PASARELA_SECRET=sk_simulada
+  pasarela-simulada:
+    profiles: ["simulador"]
+    build:
+      context: ./backend
+    command: ["node", "scripts/pasarela-simulada.js"]
+    environment:
+      SIM_PORT: 8099
+      SIM_API_KEY: ${SIM_API_KEY:-pk_simulada}
+      SIM_SECRET: ${SIM_SECRET:-sk_simulada}
+      SIM_WEBHOOK_URL: http://backend:3001/api/pagos/webhook
+      SIM_PUBLIC_URL: http://localhost:${SIM_PORT:-8099}
+    ports:
+      - "127.0.0.1:${SIM_PORT:-8099}:8099"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8099/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     restart: unless-stopped

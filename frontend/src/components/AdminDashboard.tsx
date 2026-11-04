@@ -539,7 +539,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
       // Ocultar de nuevo
       element.style.display = 'none';
       
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.85); // JPEG: el PDF pesa decenas de veces menos que con PNG
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -549,7 +549,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       pdf.save(`Reporte_Ventas_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}.pdf`);
       addToast({ type: 'success', title: 'Reporte Generado', message: 'El PDF ha sido descargado exitosamente.' });
     } catch (err) {

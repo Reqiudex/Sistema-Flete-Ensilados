@@ -1,9 +1,11 @@
 # Ensilados Santa Cruz – despliegue en Coolify (Docker Compose desde GitHub)
-# Coolify: New Resource → Public/Private Repository → Build Pack "Docker Compose"
+# Coolify: proyecto "Webs Produccion" → aplicación "tesis-v2" → Build Pack "Docker Compose"
 #          → "Docker Compose Location": /docker-compose.coolify.yml
-# Dominio: asigne https://tesis.cherry.lat (o el suyo) al servicio "frontend", puerto 80.
-# Las variables se cargan en Coolify → Environment Variables (ver docs/DESPLIEGUE-COOLIFY.md).
-# La base de datos es el Supabase propio (servicio aparte) publicado en https://dbtesis.cerice360.com
+# Publicación: el frontend se publica en el puerto ${WEB_PORT} del host (8091) y Cloudflare Tunnel lo expone en
+#   https://tesis.cerice360.com y https://tesis.cherry.lat. La API va en el mismo dominio (/api) por el proxy de Nginx,
+#   incluido el webhook de la pasarela: https://tesis.cerice360.com/api/pagos/webhook
+# Variables: Coolify → Environment Variables (ver docs/DESPLIEGUE-COOLIFY.md). Ningún secreto vive en este archivo.
+# Base de datos: Supabase propio en Coolify (https://dbtesis.cerice360.com), esquema SUPABASE_SCHEMA.
 services:
   backend:
     build:
@@ -15,19 +17,27 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       SUPABASE_URL: ${SUPABASE_URL:?Defina SUPABASE_URL (https://dbtesis.cerice360.com)}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Defina SUPABASE_SERVICE_ROLE_KEY}
-      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-public}
+      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-tesis}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?Defina ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Defina ADMIN_PASSWORD (mínimo 8 caracteres)}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://tesis.cherry.lat}
-      # Pagos QR: pasarela-pagos (si se omiten, solo Transferencia y WhatsApp)
-      PASARELA_BASE_URL: ${PASARELA_BASE_URL:-https://apipagos.cerice360.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://tesis.cerice360.com,https://tesis.cherry.lat}
+      PUBLIC_URL: ${PUBLIC_URL:-https://tesis.cerice360.com}
+      # Pagos QR con pasarela-pagos. PAGOS_QR_HABILITADO=false despliega sin la pasarela.
+      PAGOS_QR_HABILITADO: ${PAGOS_QR_HABILITADO:-true}
+      PASARELA_API_URL: ${PASARELA_API_URL:-https://apipagos.cerice360.com}
       PASARELA_API_KEY: ${PASARELA_API_KEY:-}
       PASARELA_SECRET: ${PASARELA_SECRET:-}
       PASARELA_EXPIRA_SEGUNDOS: ${PASARELA_EXPIRA_SEGUNDOS:-600}
-      PUBLIC_URL: ${PUBLIC_URL:-https://tesis.cherry.lat}
+      PAGOS_RECONCILIAR_SEGUNDOS: ${PAGOS_RECONCILIAR_SEGUNDOS:-60}
     expose:
       - "3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -41,7 +51,12 @@ services:
       backend:
         condition: service_healthy
     expose:
-      - "80"
+      - "8080"
     ports:
-      - "${WEB_PORT:-8091}:80"   # publicado para el túnel de Cloudflare
+      - "${WEB_PORT:-8091}:8080"   # publicado para el túnel de Cloudflare
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/salud"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
