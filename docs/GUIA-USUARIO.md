@@ -20,7 +20,7 @@ Lea los términos y marque la casilla de aceptación (incluye el consentimiento 
 
 ### 1.4 Datos y ubicación de entrega (HU04, HU05)
 1. Escriba su **nombre completo** y su **celular** (8 dígitos, por ejemplo 78945612; también se acepta fijo de 7 dígitos o con +591).
-2. Elija el **método de pago** (QR, Transferencia o WhatsApp). El pago se coordina fuera del sistema; la plataforma no cobra en línea.
+2. Elija el **método de pago**: **QR** (paga desde la app de su banco y se confirma solo), **Transferencia** o **WhatsApp** (los verifica el personal). La plataforma no procesa tarjetas ni guarda datos bancarios.
 3. **Arrastre el marcador rojo** del mapa hasta su finca. El sistema calcula en el momento: distancia, viajes necesarios (un viaje por cada 30 TM o fracción), costo de flete y total estimado.
 4. Pulse **Confirmar y Enviar Pedido**.
 
@@ -29,13 +29,17 @@ Lea los términos y marque la casilla de aceptación (incluye el consentimiento 
 ### 1.5 Confirmación
 Recibirá un **código de pedido** (formato `ESC-1004`). Desde esa pantalla puede **descargar el comprobante en PDF** y **enviar el resumen por WhatsApp** a la empresa. El código y el comprobante no son documentos fiscales; la factura se emite aparte.
 
-### 1.5.1 Pagar con QR
-Si eligió **QR** como método de pago, en la pantalla de confirmación pulse **Generar cobro QR**:
-1. El sistema muestra el **monto exacto** que debe pagar, con centavos (por ejemplo *Bs 4 850,01*). **Pague exactamente ese monto**: los centavos permiten identificar su pago automáticamente.
-2. Pulse **Abrir código QR y pagar**, escanee el QR con la aplicación de su banco y pague. El cobro tiene una cuenta regresiva (10 minutos por defecto).
-3. Mantenga abierta la pantalla: cuando el banco confirme el pago aparecerá **Pago confirmado**. Puede tardar un par de minutos.
-4. Si el tiempo vence antes de pagar, pulse **Generar cobro QR** de nuevo (no pague un cobro vencido). Si pagó un monto distinto o fuera de tiempo, el pedido queda **en revisión** y el equipo lo confirmará.
-Si el pago por QR no está disponible, solo verá las opciones *Transferencia* y *WhatsApp*.
+### 1.5.1 Pagar con QR (HU10)
+Si eligió **QR**, el cobro se crea automáticamente al registrar el pedido y la confirmación muestra el recuadro **Pago con QR**:
+1. **Pague exactamente** el monto grande que aparece, con centavos (por ejemplo *Bs 3.035,36*). Es el total del pedido más un centavo que identifica su pago; si paga otro monto, no se confirma solo.
+2. Pulse **Abrir el QR del banco y pagar** (o, en la computadora, escanee con el celular el código que aparece debajo), escanee el QR con la aplicación de su banco y pague.
+3. La cuenta regresiva (**Vence en mm:ss**, 10 minutos por defecto) indica cuánto tiempo tiene. Mantenga la pantalla abierta: se actualiza sola cada pocos segundos y muestra **Pago confirmado** cuando el banco lo confirma (normalmente en 1–2 minutos).
+4. Si el cobro vence antes de pagar, pulse **Generar nuevo cobro** (no pague un cobro vencido: el monto puede cambiar en centavos).
+5. Si la pasarela no responde en ese momento, el pedido queda igualmente registrado como **Pendiente de pago** y aparece el botón **Reintentar pago**.
+6. Si pagó un monto distinto o un cobro ya vencido, el pago queda **en revisión** y el personal lo confirmará.
+7. Puede cerrar la página: el enlace de retorno de la pasarela (`…/?pedido=ESC-1234`) vuelve a mostrar el estado del pago de su pedido.
+
+Si el pago QR no está disponible, solo verá *Transferencia* y *WhatsApp*. Los pedidos guardados sin conexión no generan cobro hasta que se envían al servidor; entonces el cobro se crea automáticamente.
 
 ### 1.6 Trabajar sin señal (zonas rurales)
 - Si no hay conexión, el catálogo muestra el **último catálogo guardado** y aparece un aviso.
@@ -73,6 +77,8 @@ Si el pago por QR no está disponible, solo verá las opciones *Transferencia* y
 | Contraseña propia y 2FA | ✔ | ✔ |
 
 ### 2.2 Estadísticas (HU09)
+Arriba se resume la **cobranza**: *Ventas pagadas* (QR, efectivo y verificadas), *Pendientes de pago* y *Pagos en revisión*, con el botón **Cobranza CSV**. El **Reporte PDF** incluye la misma tabla de pagadas vs. pendientes.
+
 Pestaña **Estadísticas & CRM**: ventas totales, ganancia neta estimada, toneladas, pedidos pendientes, **cobrado y por cobrar**, flete promedio y gráficos (tendencia mensual, ganancia vs. costos, ventas por producto). Los **pedidos cancelados no se cuentan**. Use el filtro **Desde / Hasta** de la pestaña *Gestión Pedidos* para acotar el período; el panel se actualiza con ese rango. **Exportar Reporte PDF** genera el informe de lo que está en pantalla.
 > Costos y ganancia son **estimaciones**: se calculan con porcentajes configurables (por defecto 60 % del subtotal para mercadería y 70 % del flete para logística).
 
@@ -83,7 +89,13 @@ Pestaña **Gestión Pedidos**:
 - **Cancelar** (icono ✕) pide confirmación y **devuelve el stock** al inventario. Los pedidos no se eliminan: quedan registrados con su historial de estados (quién y cuándo).
 - En pedidos *En Camino* el botón **Ruta** abre Google Maps con el trayecto planta → finca para el chofer.
 - **Exportar CSV** descarga los pedidos filtrados (separador `;`, abre directo en Excel).
-- La columna **Pago** muestra *Pendiente*, *Pagado*, *Vencido*, *Cancelado* o *Revisar*. Los pagos por QR se confirman solos (webhook de la pasarela). **Verificar** consulta a la pasarela en ese momento. **Confirmar** marca un pago manualmente: úselo solo después de comprobar el depósito en el banco (transferencias o WhatsApp). Un pago en **Revisar** (monto distinto, o pedido ya cancelado) requiere que usted decida si lo acepta o lo devuelve.
+- La columna **Pago** muestra el estado del cobro: *Pendiente de pago*, *Pagado*, *Pagado en efectivo*, *Vencido*, *Cancelado* o *En revisión*, y en pedidos QR el **monto exacto** del cobro vigente. El selector **Pago** filtra la lista por estado de pago. El estado de pago es independiente del estado logístico (Pendiente / En Camino / Entregado / Cancelado).
+- Los pagos QR se confirman solos (webhook firmado de la pasarela; si un aviso no llega, el sistema consulta los cobros pendientes cada minuto).
+- **Verificar**: consulta a la pasarela en ese momento.
+- **Regenerar cobro**: anula el cobro QR actual en la pasarela y crea uno nuevo (por ejemplo, cuando venció y el cliente pide pagar otra vez).
+- **Pagado en efectivo**: abre un formulario para registrar un pago recibido fuera de la pasarela. Elija *Pagado en efectivo* o *Transferencia / depósito verificado* y escriba una **nota obligatoria** (quién pagó, dónde, número de recibo). Queda en el historial con su usuario. Si había un cobro QR pendiente, se anula.
+- Un pago **En revisión** (monto distinto, o dinero recibido en un pedido cancelado) requiere que usted decida: verifíquelo, regístrelo manualmente o gestione la devolución.
+- Al **cancelar** un pedido se repone el stock y se anula su cobro QR pendiente.
 - **Nuevo Pedido Manual** registra una venta directa: cliente, celular, método de pago, producto, toneladas y coordenadas. El **flete y el total se calculan solos** y se descuenta el stock.
 
 ### 2.4 Productos (HU07)

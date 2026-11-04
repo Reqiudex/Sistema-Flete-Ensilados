@@ -21,7 +21,7 @@ Capas del backend (MVC con capa de servicios):
 |---|---|
 | El navegador no accede a Supabase | La clave `service_role` y las reglas de negocio quedan en el servidor; RLS cierra el acceso directo |
 | El servidor ignora los importes del cliente | Evita manipulación de precios, fletes y totales |
-| Stock y estados en funciones SQL (`crear_pedido`, `actualizar_estado_pedido`) | Pedido + detalle + stock + historial se confirman en una sola transacción; el bloqueo de filas evita sobreventa concurrente |
+| Stock, estados y pagos en funciones SQL (`crear_pedido`, `actualizar_estado_pedido`, `registrar_pago_pedido`) | Pedido + detalle + stock + historial se confirman en una sola transacción; el bloqueo de filas evita sobreventa concurrente |
 | Cancelación en lugar de borrado | Trazabilidad e integridad de reportes; el stock se repone |
 | Parámetros de tarifa en la tabla `parametros_flete` | La empresa ajusta tarifas sin modificar código; el trigger de costos usa los mismos porcentajes |
 | Modo memoria sin Supabase | Demostración y pruebas automáticas sin infraestructura |
@@ -31,7 +31,7 @@ Capas del backend (MVC con capa de servicios):
 | 2FA TOTP propio (sin dependencias) | Compatible con Google Authenticator/Authy; verificado con el vector de prueba del RFC 6238 |
 
 ## Modelo de datos
-`productos` 1—N `detalle_pedido` N—1 `pedidos` 1—N `historial_pedidos`; `usuarios` (administradores); `parametros_flete` (fila única). Trigger `fn_generar_codigo_pedido` (`ESC-NNNN`) y `fn_calcular_financieros` (costos estimados). Detalle completo en `database/schema.sql`.
+`productos` 1—N `detalle_pedido` N—1 `pedidos` 1—N `historial_pedidos`; `pedidos` 1—N `historial_pagos`; `pedidos` 1—N `pagos_webhook_entregas`; `usuarios` (administradores); `parametros_flete` (fila única). Trigger `fn_generar_codigo_pedido` (`ESC-NNNN`) y `fn_calcular_financieros` (costos estimados). Detalle completo en `database/schema.sql`.
 
 ## Estados del pedido
 ```
@@ -41,16 +41,39 @@ Pendiente ⇄ En Camino
    └────────────┴──► Cancelado (final, repone stock)
 ```
 
-## Flujo de pago QR
+## Flujo de pago QR (detalle en [PAGOS.md](PAGOS.md))
+```mermaid
+sequenceDiagram
+  participant C as Cliente (navegador)
+  participant N as Nginx (frontend)
+  participant B as Backend (Express)
+  participant D as Supabase (PostgreSQL)
+  participant P as Pasarela (apipagos.cerice360.com)
+  C->>N: POST /api/orders (sin importes confiables)
+  N->>B: proxy /api
+  B->>D: RPC crear_pedido (pedido + detalle + stock + historial)
+  B->>P: POST /v1/payments firmado HMAC (amount_cents del servidor, idempotency_key = id)
+  P-->>B: 201 total_amount (con centavo único), checkout_url, expires_at
+  B->>D: RPC registrar_pago_pedido (Pendiente + datos del cobro)
+  B-->>C: pedido + pago (monto exacto, checkout_url)
+  C->>P: paga el QR del banco (monto exacto)
+  P->>N: webhook payment.paid (X-Pasarela-Signature)
+  N->>B: POST /api/pagos/webhook (cuerpo crudo)
+  B->>D: RPC registrar_pago_pedido (entrega + Pagado, atómico e idempotente)
+  loop cada 4 s mientras esté pendiente
+    C->>B: GET /api/orders/:codigo/pago
+  end
+  Note over B,P: Respaldo: cada 60 s GET /v1/payments/{id} de los cobros pendientes
 ```
-Cliente ──pedido──► API (estado Pendiente, pago Pendiente)
-Cliente ──POST /orders/:codigo/pago──► API ──POST /v1/payments (HMAC)──► Pasarela ──► monto exacto + checkout
-Cliente paga el QR del banco ─► banco envía recibo a Gmail ─► Pasarela concilia (SPF/DKIM/DMARC)
-Pasarela ──webhook payment.paid (HMAC)──► POST /api/webhooks/pasarela ──► pedido: pago_estado = Pagado
+
+```
+Internet ─► Cloudflare ─► cloudflared (host) ─► :8091 Nginx (frontend, sin root) ─► /api ─► backend :3001 (red interna)
+                                                                                    └─► dbtesis.cerice360.com (Supabase, esquema tesis)
+                                                                                    └─► apipagos.cerice360.com (pasarela)
 ```
 
 ## Seguridad
-JWT de acceso (8 h) con `proposito: acceso`; token de pre-autenticación (5 min, `pre2fa`) que no sirve como sesión; el middleware comprueba en cada petición que el usuario siga existiendo y usa su rol actual. Webhook de pagos: cuerpo crudo verificado con HMAC-SHA256 en tiempo constante y ventana de 5 minutos; el secreto de la pasarela vive solo en el servidor. Contraseñas bcrypt (coste 10), límites de intentos, cabeceras de seguridad, CORS por lista, JSON limitado a 100 kB.
+JWT de acceso (8 h) con `proposito: acceso`; token de pre-autenticación (5 min, `pre2fa`) que no sirve como sesión; el middleware comprueba en cada petición que el usuario siga existiendo y usa su rol actual. Webhook de pagos: cuerpo crudo verificado con HMAC-SHA256 en tiempo constante y ventana de 5 minutos; el secreto de la pasarela vive solo en el servidor. Contraseñas bcrypt (coste 10), límites de intentos por IP real del cliente (Nginx toma `CF-Connecting-IP`), cabeceras de seguridad en Nginx y Express, CORS por lista, JSON limitado a 100 kB, contenedores sin root. RLS sin acceso para `anon`/`authenticated`.
 
 ## Pruebas
-`backend/tests` (`npm test`, incluye `pagos.test.js` con los vectores oficiales de firma de la pasarela, `node:test`, sin dependencias de prueba): fórmula del flete, Haversine, TOTP (RFC 6238), validadores, CSV, y flujos de API (pedido, stock, estados, historial, roles, 2FA en dos pasos, usuarios, productos, parámetros).
+`backend/tests` (`npm test`, 46 pruebas; `pagos.test.js` incluye los vectores oficiales de firma de la pasarela y una prueba de integración HTTP contra la pasarela simulada `backend/scripts/pasarela-simulada.js`, `node:test`, sin dependencias de prueba): fórmula del flete, Haversine, TOTP (RFC 6238), validadores, CSV, y flujos de API (pedido, stock, estados, historial, roles, 2FA en dos pasos, usuarios, productos, parámetros).
