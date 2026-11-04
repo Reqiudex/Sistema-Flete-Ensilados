@@ -61,6 +61,7 @@ async function llamar(handler, { body = {}, params = {}, query = {}, usuario, he
 }
 
 function reiniciarTodo() {
+  require('../../src/services/pagoService')._reiniciarConsultas();
   require('../../src/models/productRepository')._reset();
   require('../../src/models/orderRepository')._reset();
   require('../../src/models/userRepository')._reset();

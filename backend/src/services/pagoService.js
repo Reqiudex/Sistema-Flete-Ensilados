@@ -185,10 +185,24 @@ async function cobroInicial(pedido) {
   }
 }
 
+/**
+ * El navegador consulta cada pocos segundos; para no agotar el límite de peticiones de la pasarela, cada cobro se
+ * contrasta como máximo una vez cada CONSULTA_MIN_MS (el webhook suele llegar antes).
+ */
+const CONSULTA_MIN_MS = 15000;
+const ultimaConsulta = new Map();
+function tocaConsultar(pagoId) {
+  const ahora = Date.now();
+  if (ahora - (ultimaConsulta.get(pagoId) || 0) < CONSULTA_MIN_MS) return false;
+  ultimaConsulta.set(pagoId, ahora);
+  if (ultimaConsulta.size > 5000) for (const [k, t] of ultimaConsulta) if (ahora - t > CONSULTA_MIN_MS) ultimaConsulta.delete(k);
+  return true;
+}
+
 /** Consulta el estado; si el cobro sigue pendiente lo contrasta con la pasarela (fuente de verdad). */
 async function consultarPago(codigo, { forzar = false } = {}) {
   let p = await exigirPedido(codigo);
-  if (pasarela.habilitada() && p.pago_id && (p.pago_estado === PAGO.PENDIENTE || forzar)) {
+  if (pasarela.habilitada() && p.pago_id && ((p.pago_estado === PAGO.PENDIENTE && tocaConsultar(p.pago_id)) || forzar)) {
     p = await contrastar(p);
   }
   return vistaPublica(p);
@@ -330,6 +344,7 @@ function iniciarReconciliador() {
   temporizador.unref?.();
   return true;
 }
+function _reiniciarConsultas() { ultimaConsulta.clear(); }
 function detenerReconciliador() {
   if (temporizador) clearInterval(temporizador);
   temporizador = null;
@@ -339,5 +354,5 @@ module.exports = {
   PAGO, ESTADOS_PAGO, aCentavos, vistaPublica,
   iniciarPago, cobroInicial, consultarPago, procesarWebhook,
   verificarAdmin, regenerarCobro, registrarPagoManual, alCancelarPedido,
-  reconciliarPendientes, iniciarReconciliador, detenerReconciliador,
+  reconciliarPendientes, iniciarReconciliador, detenerReconciliador, _reiniciarConsultas,
 };

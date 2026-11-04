@@ -534,3 +534,17 @@ test('Integración por HTTP con la pasarela simulada: firma real, nonce, centavo
     for (const k of ['SIM_SECRET', 'SIM_API_KEY', 'SIM_WEBHOOK_URL']) delete process.env[k];
   }
 });
+
+test('Consultas del navegador no agotan el límite de la pasarela; monto sobre el máximo sugiere transferencia', async () => {
+  const f = pasarelaFalsa(); pasarela.__setFetch(f.fn);
+  const p = await pedidoQr();
+  const antes = f.llamadas.length;
+  for (let i = 0; i < 10; i++) await llamar(pagoCtl.consultar, { params: { codigo: p.codigo_pedido } });
+  assert.equal(f.llamadas.length - antes, 1, '10 consultas seguidas → 1 sola petición a la pasarela');
+
+  f.estado.fallo = { status: 400, code: 'invalid_request' };
+  const grande = await pedidoQr();
+  assert.equal(grande.status ?? 201, 201);
+  assert.equal(grande.pago.error.codigo, 'PAGO_QR_RECHAZADO');
+  assert.match(grande.pago.error.mensaje, /transferencia/i);
+});

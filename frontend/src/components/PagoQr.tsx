@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, QrCode, RefreshCw, XCircle } from 'lucide-react';
-import { PagoQr as PagoQrDatos, consultarPagoQr, iniciarPagoQr, mensajeError } from '../api';
+import { ApiError, PagoQr as PagoQrDatos, consultarPagoQr, iniciarPagoQr, mensajeError } from '../api';
 
 interface PagoQrProps {
   codigo: string;
@@ -23,6 +23,8 @@ const INTERVALO_MS = 4000;
 export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps) {
   const [pago, setPago] = useState<PagoQrDatos | null>(inicial);
   const [error, setError] = useState<string | null>(inicial?.error?.mensaje ?? null);
+  // El monto supera el máximo permitido por QR: reintentar no sirve, se sugiere transferencia
+  const [rechazado, setRechazado] = useState(inicial?.error?.codigo === 'PAGO_QR_RECHAZADO');
   const [cargando, setCargando] = useState(!inicial);
   const [restante, setRestante] = useState(inicial?.segundos_restantes ?? 0);
   const avisado = useRef(false);
@@ -43,6 +45,7 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
       aplicar(await iniciarPagoQr(codigo));
     } catch (e) {
       setError(mensajeError(e, 'No se pudo generar el cobro QR.'));
+      if (e instanceof ApiError && e.code === 'PAGO_QR_RECHAZADO') setRechazado(true);
     } finally {
       setCargando(false);
     }
@@ -137,7 +140,14 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
         </p>
       )}
 
-      {!vigente && !cargando && (
+      {rechazado && !cargando && (
+        <p className="text-sm text-gray-700">
+          Su pedido quedó registrado. Por su monto, pague por <b>transferencia bancaria</b> o coordine el pago por
+          <b> WhatsApp</b> indicando el código del pedido.
+        </p>
+      )}
+
+      {!vigente && !cargando && !rechazado && (
         <>
           <p className="text-xs text-gray-600">
             {vencido
@@ -196,7 +206,7 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
         </div>
       )}
 
-      {error && (
+      {error && !rechazado && (
         <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 flex items-start space-x-2" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>{error}</span>

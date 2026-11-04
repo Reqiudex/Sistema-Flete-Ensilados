@@ -56,7 +56,9 @@ function traducirError(status, cuerpo, retryAfter) {
     return new ErrorNegocio('La pasarela de pagos no puede confirmar cobros en este momento. Intente en unos minutos o elija otro método de pago.', 'PAGO_QR_NO_DISPONIBLE', 503);
   }
   if (status === 400) {
-    return new ErrorNegocio(cuerpo?.error?.message || 'La pasarela rechazó los datos del cobro.', 'PAGO_QR_RECHAZADO', 400);
+    // Normalmente: el monto supera el máximo por cobro configurado para la app en la pasarela
+    console.warn('[Pasarela] Cobro rechazado:', cuerpo?.error?.message || codigo);
+    return new ErrorNegocio('Este monto no se puede pagar por QR. Pague por transferencia bancaria o coordine por WhatsApp; su pedido ya está registrado.', 'PAGO_QR_RECHAZADO', 400);
   }
   console.error('[Pasarela] Error inesperado', status, codigo, retryAfter || '');
   return new ErrorNegocio('No se pudo contactar con la pasarela de pagos.', 'PAGO_QR_ERROR', 502);
