@@ -71,6 +71,7 @@ let historialMemoria = [];
 let contador = 1000;
 let sembrado = false;
 let entregasMemoria = new Set();
+let historialPagosMemoria = [];
 
 function sembrarDemo() {
   if (sembrado) return;
@@ -182,13 +183,14 @@ async function crear({ pedido, items, usuario = 'cliente' }) {
   return JSON.parse(JSON.stringify(registro));
 }
 
-async function listar({ estado, desde, hasta } = {}) {
+async function listar({ estado, pagoEstado, desde, hasta } = {}) {
   const db = getSupabase();
   const rango = rangoFechas(desde, hasta);
 
   if (db) {
     let consulta = db.from('pedidos').select(SELECT_PEDIDO).order('creado_en', { ascending: false });
     if (estado) consulta = consulta.eq('estado', estado);
+    if (pagoEstado) consulta = consulta.eq('pago_estado', pagoEstado);
     if (rango.desde) consulta = consulta.gte('creado_en', rango.desde);
     if (rango.hasta) consulta = consulta.lte('creado_en', rango.hasta);
     const { data, error } = await consulta;
@@ -202,6 +204,7 @@ async function listar({ estado, desde, hasta } = {}) {
   sembrarDemo();
   return memoria
     .filter((p) => (!estado || p.estado === estado))
+    .filter((p) => (!pagoEstado || p.pago_estado === pagoEstado))
     .filter((p) => (!rango.desde || p.creado_en >= rango.desde))
     .filter((p) => (!rango.hasta || p.creado_en <= rango.hasta))
     .sort((a, b) => (a.creado_en < b.creado_en ? 1 : -1))
@@ -280,49 +283,101 @@ async function obtenerPorCodigo(codigo) {
 }
 
 const CAMPOS_PAGO = ['pago_estado', 'pago_id', 'pago_total_bs', 'pago_checkout_url', 'pago_vence_en', 'pago_intentos', 'pagado_en'];
+const PAGO_CONFIRMADO = ['Pagado', 'Pagado en efectivo'];
 
-/** Actualiza únicamente los campos de pago de un pedido (no toca estado, stock ni importes). */
-async function actualizarPago(id, campos) {
+/**
+ * Cambia los datos de pago de un pedido de forma atómica (RPC registrar_pago_pedido).
+ * No toca estado logístico, stock ni importes. Un pago confirmado nunca se degrada.
+ * @param {string} id
+ * @param {object} campos       Subconjunto de CAMPOS_PAGO
+ * @param {object} [opts]
+ * @param {string} [opts.usuario] Origen del cambio ('pasarela', 'consulta', 'cliente', correo del administrador)
+ * @param {string} [opts.nota]    Nota obligatoria en acciones manuales
+ * @param {string} [opts.entrega] X-Pasarela-Delivery: si ya se procesó, no se aplica nada (idempotencia)
+ * @param {string} [opts.evento]
+ * @returns {Promise<{pedido: object|null, aplicado: boolean, duplicado: boolean}>}
+ */
+async function registrarPago(id, campos, { usuario = 'sistema', nota = null, entrega = null, evento = null } = {}) {
   const cambios = {};
   for (const k of CAMPOS_PAGO) if (campos[k] !== undefined) cambios[k] = campos[k];
   const db = getSupabase();
   if (db) {
     if (!UUID.test(String(id))) throw new ErrorNegocio('Pedido no encontrado.', 'PEDIDO_NO_ENCONTRADO', 404);
-    const { error } = await db.from('pedidos').update({ ...cambios, actualizado_en: new Date().toISOString() }).eq('id', id);
+    const { data, error } = await db.rpc('registrar_pago_pedido', {
+      p_id: id, p_cambios: cambios, p_usuario: usuario, p_nota: nota, p_entrega: entrega, p_evento: evento,
+    });
     if (error) {
-      console.error('[Pedido] Error al actualizar pago:', error.message);
+      if ((error.message || '').includes('PEDIDO_NO_ENCONTRADO')) throw new ErrorNegocio('Pedido no encontrado.', 'PEDIDO_NO_ENCONTRADO', 404);
+      console.error('[Pedido] Error en registrar_pago_pedido:', error.message);
       throw new ErrorNegocio('No se pudo actualizar el pago del pedido.', 'ERROR_ACTUALIZACION', 500);
     }
-    return obtenerPorId(id);
+    return { pedido: await obtenerPorId(id), aplicado: !!data?.aplicado, duplicado: !!data?.duplicado };
   }
+
   sembrarDemo();
   const p = memoria.find((x) => x.id === id);
   if (!p) throw new ErrorNegocio('Pedido no encontrado.', 'PEDIDO_NO_ENCONTRADO', 404);
-  Object.assign(p, cambios, { actualizado_en: new Date().toISOString() });
-  return JSON.parse(JSON.stringify(p));
+  if (entrega) {
+    if (entregasMemoria.has(entrega)) return { pedido: JSON.parse(JSON.stringify(p)), aplicado: false, duplicado: true };
+    entregasMemoria.add(entrega);
+  }
+  const anterior = p.pago_estado;
+  const nuevo = cambios.pago_estado ?? anterior;
+  if (PAGO_CONFIRMADO.includes(anterior) && !PAGO_CONFIRMADO.includes(nuevo)) {
+    return { pedido: JSON.parse(JSON.stringify(p)), aplicado: false, duplicado: false };
+  }
+  const ahora = new Date().toISOString();
+  Object.assign(p, cambios, { pago_estado: nuevo, actualizado_en: ahora });
+  if (nuevo !== anterior || nota || cambios.pago_id !== undefined) {
+    historialPagosMemoria.push({ pedido_id: id, estado_anterior: anterior, estado_nuevo: nuevo, cobro_id: p.pago_id || null, usuario, nota, creado_en: ahora });
+  }
+  return { pedido: JSON.parse(JSON.stringify(p)), aplicado: true, duplicado: false };
 }
 
-/** Registra la entrega de un webhook. Devuelve false si ya se había procesado (idempotencia). */
-async function registrarEntregaWebhook(entregaId, evento, pedidoId) {
+/** Atajo: aplica cambios de pago y devuelve el pedido actualizado. */
+async function actualizarPago(id, campos, opts) {
+  return (await registrarPago(id, campos, opts)).pedido;
+}
+
+async function historialPagos(id) {
   const db = getSupabase();
   if (db) {
-    const { error } = await db.from('pagos_webhook_entregas').insert({ entrega_id: entregaId, evento, pedido_id: pedidoId });
-    if (!error) return true;
-    if (error.code === '23505') return false;
-    console.error('[Webhook] Error al registrar entrega:', error.message);
-    throw new ErrorNegocio('No se pudo registrar el webhook.', 'ERROR_BASE_DATOS', 500);
+    if (!UUID.test(String(id))) return [];
+    const { data, error } = await db.from('historial_pagos').select('*').eq('pedido_id', id).order('creado_en');
+    if (error) throw new ErrorNegocio('No se pudo consultar el historial de pagos.', 'ERROR_CONSULTA', 500);
+    return data || [];
   }
-  if (entregasMemoria.has(entregaId)) return false;
-  entregasMemoria.add(entregaId);
-  return true;
+  return historialPagosMemoria.filter((h) => h.pedido_id === id).map((h) => ({ ...h }));
+}
+
+/** Cobros QR pendientes con más de `minSeg` segundos de antigüedad (respaldo por consulta si no llega el webhook). */
+async function listarCobrosPendientes({ limite = 50 } = {}) {
+  const db = getSupabase();
+  if (db) {
+    const { data, error } = await db.from('pedidos')
+      .select('id, codigo_pedido, estado, total_bs, pago_estado, pago_id, pago_vence_en')
+      .eq('pago_estado', 'Pendiente').not('pago_id', 'is', null)
+      .order('pago_vence_en', { ascending: true }).limit(limite);
+    if (error) {
+      console.error('[Pagos] Error al listar cobros pendientes:', error.message);
+      return [];
+    }
+    return (data || []).map(normalizar);
+  }
+  sembrarDemo();
+  return memoria.filter((p) => p.pago_estado === 'Pendiente' && p.pago_id).slice(0, limite).map((p) => JSON.parse(JSON.stringify(p)));
 }
 
 function _reset() {
   entregasMemoria = new Set();
   memoria = [];
   historialMemoria = [];
+  historialPagosMemoria = [];
   contador = 1000;
   sembrado = false;
 }
 
-module.exports = { crear, listar, obtenerPorId, obtenerPorCodigo, actualizarPago, registrarEntregaWebhook, actualizarEstado, historial, rangoFechas, _reset };
+module.exports = {
+  crear, listar, obtenerPorId, obtenerPorCodigo, registrarPago, actualizarPago, historialPagos, listarCobrosPendientes,
+  actualizarEstado, historial, rangoFechas, PAGO_CONFIRMADO, _reset,
+};

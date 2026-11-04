@@ -84,7 +84,10 @@ test('Estados: transiciones válidas, cancelar restaura stock, finales inmutable
   r = await llamar(admin.cambiarEstado, { params: { id: ped.id }, body: { estado: 'Inventado' }, usuario: admin1 });
   assert.equal(r.status, 400);
   const h = await llamar(admin.historialPedido, { params: { id: ped.id } });
-  assert.equal(h.body.length, 3);
+  assert.equal(h.body.filter((x) => x.tipo === 'estado').length, 3);
+  // al cancelar, el pago pendiente también queda Cancelado y se registra en el historial de pagos
+  assert.equal(r.body.pago_estado ?? (await llamar(admin.obtenerPedido, { params: { id: ped.id } })).body.pago_estado, 'Cancelado');
+  assert.ok(h.body.some((x) => x.tipo === 'pago' && x.estado_nuevo === 'Cancelado'));
 });
 
 test('Estadísticas excluyen cancelados; CSV se genera', async () => {

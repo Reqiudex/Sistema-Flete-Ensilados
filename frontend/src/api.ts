@@ -155,6 +155,9 @@ export function aPedido(p: any): Order {
     payment_method: p.metodo_pago as PaymentMethod,
     payment_status: (p.pago_estado || 'Pendiente') as PaymentStatus,
     paid_at: p.pagado_en ?? null,
+    payment_id: p.pago_id ?? null,
+    payment_amount_exact: p.pago_total_bs == null ? null : num(p.pago_total_bs),
+    payment_expires_at: p.pago_vence_en ?? null,
     status: p.estado as OrderStatus,
     created_at: p.creado_en,
     items: (p.detalle_pedido || []).map(aItem),
@@ -212,7 +215,13 @@ export interface PagoQr {
   monto_a_pagar_bs: number | null;
   checkout_url: string | null;
   segundos_restantes: number;
+  vence_en?: string | null;
   pagado_en: string | null;
+  metodo_pago?: PaymentMethod;
+  /** true si ya existe un cobro en la pasarela para este pedido */
+  tiene_cobro?: boolean;
+  /** Presente cuando el pedido se registró pero la pasarela no pudo crear el cobro (503/429) */
+  error?: { codigo: string; mensaje: string };
 }
 
 /** Solicita (o recupera) el cobro QR vigente de un pedido. */
@@ -230,9 +239,17 @@ export async function verificarPagoAdmin(id: string): Promise<Order> {
   return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago/verificar`, { method: 'POST', auth: true }));
 }
 
-/** Administración: confirma manualmente un pago (transferencia o WhatsApp verificados fuera del sistema). */
-export async function confirmarPagoAdmin(id: string): Promise<Order> {
-  return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago`, { method: 'PATCH', body: { pago_estado: 'Pagado' }, auth: true }));
+/**
+ * Administración: registra un pago verificado fuera de la pasarela. La nota es obligatoria (queda en el historial).
+ * 'Pagado en efectivo' = dinero en mano; 'Pagado' = transferencia o WhatsApp verificados.
+ */
+export async function confirmarPagoAdmin(id: string, estado: 'Pagado' | 'Pagado en efectivo', nota: string): Promise<Order> {
+  return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago`, { method: 'PATCH', body: { pago_estado: estado, nota }, auth: true }));
+}
+
+/** Administración: genera un cobro QR nuevo (cancela en la pasarela el que siguiera pendiente). */
+export async function regenerarCobroAdmin(id: string): Promise<Order> {
+  return aPedido(await http<any>(`/admin/orders/${encodeURIComponent(id)}/pago/regenerar`, { method: 'POST', auth: true }));
 }
 
 /* --------------------------------- Catálogo --------------------------------- */
@@ -328,6 +345,8 @@ export function pedidosPendientes(): PedidoPendiente[] {
 export interface ResultadoPedido {
   order: Order;
   enviado: boolean; // false = guardado sin conexión, se enviará al volver la red
+  /** Cobro QR creado por el servidor al registrar el pedido (la cola offline nunca crea cobros) */
+  pago?: PagoQr | null;
 }
 
 export async function crearPedido(
@@ -338,7 +357,7 @@ export async function crearPedido(
   const payload = aPayloadApi(datos, items);
   try {
     const pedido = await http<any>('/orders', { method: 'POST', body: payload });
-    return { order: aPedido(pedido), enviado: true };
+    return { order: aPedido(pedido), enviado: true, pago: (pedido?.pago as PagoQr | null) ?? null };
   } catch (e) {
     if (!(e instanceof ApiError) || !e.isNetwork) throw e;
 
@@ -439,12 +458,14 @@ export const cambiarPassword = (password_actual: string, password_nueva: string)
 
 export interface FiltroPedidos {
   estado?: string;
+  pago_estado?: string;
   desde?: string;
   hasta?: string;
 }
 const query = (f: FiltroPedidos) => {
   const p = new URLSearchParams();
   if (f.estado && f.estado !== 'Todos') p.set('estado', f.estado);
+  if (f.pago_estado && f.pago_estado !== 'Todos') p.set('pago_estado', f.pago_estado);
   if (f.desde) p.set('desde', f.desde);
   if (f.hasta) p.set('hasta', f.hasta);
   const s = p.toString();
@@ -491,12 +512,12 @@ export const admin = {
   guardarParametros: (cambios: Partial<Omit<FleteParams, 'origen'>>) =>
     http<any>('/admin/flete-params', { method: 'PUT', auth: true, body: cambios }),
 
-  /** Descarga el CSV de pedidos (HU09) con la sesión actual. */
-  descargarCsv: async (f: FiltroPedidos = {}) => {
+  /** Descarga un reporte CSV con la sesión actual: pedidos (HU09) o cobranza pagada vs. pendiente (HU10). */
+  descargarCsv: async (f: FiltroPedidos = {}, reporte: 'orders' | 'cobranza' = 'orders') => {
     const t = obtenerToken();
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}/admin/reports/orders.csv${query(f)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+      res = await fetch(`${API_BASE}/admin/reports/${reporte}.csv${query(f)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
     } catch {
       throw new ApiError('No se pudo conectar con el servidor.', 0, 'SIN_CONEXION');
     }
@@ -505,7 +526,7 @@ export const admin = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pedidos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${reporte === 'orders' ? 'pedidos' : 'cobranza'}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();

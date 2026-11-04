@@ -3,12 +3,22 @@
 
 const orderRepo = require('../models/orderRepository');
 const { redondear } = require('../models/fleteModel');
+const { PAGO_CONFIRMADO } = orderRepo;
 
 async function resumen({ desde, hasta } = {}) {
   const pedidos = await orderRepo.listar({ desde, hasta });
   const validos = pedidos.filter((p) => p.estado !== 'Cancelado');
 
-  const pagados = validos.filter((p) => p.pago_estado === 'Pagado');
+  const pagados = validos.filter((p) => PAGO_CONFIRMADO.includes(p.pago_estado));
+  const porCobrar = validos.filter((p) => !PAGO_CONFIRMADO.includes(p.pago_estado));
+  const porEstadoPago = {};
+  for (const p of validos) {
+    const e = p.pago_estado || 'Pendiente';
+    const d = porEstadoPago[e] || { pedidos: 0, monto_bs: 0 };
+    d.pedidos += 1;
+    d.monto_bs = redondear(d.monto_bs + (Number(p.total_bs) || 0));
+    porEstadoPago[e] = d;
+  }
   const suma = (campo) => redondear(validos.reduce((a, p) => a + (Number(p[campo]) || 0), 0));
   const porEstado = {};
   for (const p of pedidos) porEstado[p.estado] = (porEstado[p.estado] || 0) + 1;
@@ -35,7 +45,10 @@ async function resumen({ desde, hasta } = {}) {
     toneladas_por_producto: porProducto,
     pedidos_pagados: pagados.length,
     cobrado_bs: redondear(pagados.reduce((a, p) => a + (Number(p.total_bs) || 0), 0)),
-    por_cobrar_bs: redondear(validos.filter((p) => p.pago_estado !== 'Pagado').reduce((a, p) => a + (Number(p.total_bs) || 0), 0)),
+    pagados_efectivo: pagados.filter((p) => p.pago_estado === 'Pagado en efectivo').length,
+    pedidos_por_cobrar: porCobrar.length,
+    por_cobrar_bs: redondear(porCobrar.reduce((a, p) => a + (Number(p.total_bs) || 0), 0)),
+    por_estado_pago: porEstadoPago,
     pagos_por_revisar: pedidos.filter((p) => p.pago_estado === 'Revision').length,
   };
 }

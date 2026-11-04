@@ -24,7 +24,10 @@ function crearRutas() {
   r.post('/orders', limitePedidos, pub.crearPedido);
   r.post('/orders/:codigo/pago', limitePagos, pago.iniciar);
   r.get('/orders/:codigo/pago', crearLimitador({ max: 240, ventanaMs: 10 * 60 * 1000 }), pago.consultar);
-  r.post('/webhooks/pasarela', pago.webhook); // firma HMAC; cuerpo crudo (ver app.js)
+  // Webhook de la pasarela (firma HMAC sobre el cuerpo crudo, ver app.js). La ruta documentada es /api/pagos/webhook;
+  // /api/webhooks/pasarela se mantiene por compatibilidad con la configuración anterior.
+  r.post('/pagos/webhook', pago.webhook);
+  r.post('/webhooks/pasarela', pago.webhook);
 
   // Autenticación
   r.post('/auth/login', limiteLogin, auth.login);
@@ -45,8 +48,10 @@ function crearRutas() {
   a.get('/orders/:id/history', admin.historialPedido);
   a.post('/orders/:id/pago/verificar', admin.verificarPago);
   a.patch('/orders/:id/pago', admin.confirmarPago);
+  a.post('/orders/:id/pago/regenerar', admin.regenerarCobro);
   a.get('/stats', admin.estadisticas);
   a.get('/reports/orders.csv', admin.reporteCsv);
+  a.get('/reports/cobranza.csv', admin.reporteCobranzaCsv);
   a.get('/products', admin.listarProductos);
   a.post('/products', admin.crearProducto);
   a.put('/products/:id', admin.actualizarProducto);

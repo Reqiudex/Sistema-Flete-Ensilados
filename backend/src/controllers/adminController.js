@@ -9,7 +9,7 @@ const parametrosRepo = require('../models/parametrosFleteRepo');
 const orderService = require('../services/orderService');
 const pagoService = require('../services/pagoService');
 const statsService = require('../services/statsService');
-const { pedidosACsv } = require('../utils/csv');
+const { pedidosACsv, cobranzaACsv } = require('../utils/csv');
 const v = require('../utils/validators');
 const { responderError, ErrorNegocio } = require('../utils/errors');
 const { COSTO_BCRYPT } = require('./authController');
@@ -22,6 +22,10 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 function filtros(q) {
   const f = {};
   if (q.estado) f.estado = exigir(v.validarEstado(q.estado));
+  if (q.pago_estado) {
+    if (!pagoService.ESTADOS_PAGO.includes(q.pago_estado)) throw new ErrorNegocio('Estado de pago inválido.', 'PAGO_ESTADO_INVALIDO', 400);
+    f.pagoEstado = q.pago_estado;
+  }
   if (q.desde) {
     if (!FECHA.test(q.desde)) throw new ErrorNegocio('Fecha "desde" inválida (AAAA-MM-DD).', 'FECHA_INVALIDA', 400);
     f.desde = q.desde;
@@ -48,16 +52,31 @@ const obtenerPedido = envolver('obtenerPedido', async (req, res) => {
   res.json(p);
 });
 const crearPedidoManual = envolver('crearPedidoManual', async (req, res) => {
-  res.status(201).json(await orderService.crearPedido(req.body, req.usuario.email));
+  const pedido = await orderService.crearPedido(req.body, req.usuario.email);
+  const pago = await pagoService.cobroInicial(pedido);
+  res.status(201).json({ ...(await orderRepo.obtenerPorId(pedido.id)), pago });
 });
 const cambiarEstado = envolver('cambiarEstado', async (req, res) =>
   res.json(await orderService.cambiarEstado(req.params.id, req.body?.estado, req.usuario.email)));
-const verificarPago = envolver('verificarPago', async (req, res) => res.json(await pagoService.verificarAdmin(req.params.id)));
+const verificarPago = envolver('verificarPago', async (req, res) =>
+  res.json(await pagoService.verificarAdmin(req.params.id, req.usuario.email)));
+/** Registro manual: { pago_estado: 'Pagado en efectivo' | 'Pagado', nota } (nota obligatoria). */
 const confirmarPago = envolver('confirmarPago', async (req, res) => {
-  if (req.body?.pago_estado !== 'Pagado') throw new ErrorNegocio('Solo se puede confirmar el pago ("Pagado").', 'PAGO_ESTADO_INVALIDO', 400);
-  res.json(await pagoService.confirmarManual(req.params.id));
+  res.json(await pagoService.registrarPagoManual(req.params.id, {
+    estado: req.body?.pago_estado, nota: req.body?.nota, usuario: req.usuario.email,
+  }));
 });
-const historialPedido = envolver('historialPedido', async (req, res) => res.json(await orderRepo.historial(req.params.id)));
+const regenerarCobro = envolver('regenerarCobro', async (req, res) =>
+  res.json(await pagoService.regenerarCobro(req.params.id, req.usuario.email)));
+/** Historial logístico y de pagos en una sola línea de tiempo. */
+const historialPedido = envolver('historialPedido', async (req, res) => {
+  const [logistico, pagos] = await Promise.all([orderRepo.historial(req.params.id), orderRepo.historialPagos(req.params.id)]);
+  const lineas = [
+    ...logistico.map((h) => ({ ...h, tipo: 'estado' })),
+    ...pagos.map((h) => ({ ...h, tipo: 'pago' })),
+  ].sort((a, b) => String(a.creado_en).localeCompare(String(b.creado_en)));
+  res.json(lineas);
+});
 const estadisticas = envolver('estadisticas', async (req, res) => {
   const f = filtros(req.query);
   res.json(await statsService.resumen({ desde: f.desde, hasta: f.hasta }));
@@ -69,6 +88,15 @@ const reporteCsv = envolver('reporteCsv', async (req, res) => {
     'Content-Disposition': `attachment; filename="pedidos-${new Date().toISOString().slice(0, 10)}.csv"`,
   });
   res.send(pedidosACsv(pedidos));
+});
+const reporteCobranzaCsv = envolver('reporteCobranzaCsv', async (req, res) => {
+  const f = filtros(req.query);
+  const r = await statsService.resumen({ desde: f.desde, hasta: f.hasta });
+  res.set({
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="cobranza-${new Date().toISOString().slice(0, 10)}.csv"`,
+  });
+  res.send(cobranzaACsv(r));
 });
 
 /* ---- Productos ---- */
@@ -127,7 +155,8 @@ const eliminarUsuario = envolver('eliminarUsuario', async (req, res) => {
 });
 
 module.exports = {
-  listarPedidos, obtenerPedido, crearPedidoManual, cambiarEstado, historialPedido, verificarPago, confirmarPago, estadisticas, reporteCsv,
+  listarPedidos, obtenerPedido, crearPedidoManual, cambiarEstado, historialPedido, verificarPago, confirmarPago, regenerarCobro,
+  estadisticas, reporteCsv, reporteCobranzaCsv,
   listarProductos, crearProducto, actualizarProducto, desactivarProducto,
   actualizarParametros, listarUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario,
 };

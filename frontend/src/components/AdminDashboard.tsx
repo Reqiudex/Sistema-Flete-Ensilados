@@ -12,7 +12,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { FleteParams, Order, OrderStatus, PaymentMethod, Product, UserProfile, UserRole } from '../types';
+import { ETIQUETA_PAGO, FleteParams, Order, OrderStatus, PaymentMethod, PaymentStatus, Product, UserProfile, UserRole } from '../types';
 import * as api from '../api';
 
 interface AdminDashboardProps {
@@ -33,6 +33,16 @@ const TRANSICIONES: Record<OrderStatus, OrderStatus[]> = {
   Cancelado: [],
 };
 const ESTADOS_FILTRO = ['Todos', 'Pendiente', 'En Camino', 'Entregado', 'Cancelado'];
+const PAGOS_FILTRO: ('Todos' | PaymentStatus)[] = ['Todos', 'Pendiente', 'Pagado', 'Pagado en efectivo', 'Vencido', 'Revision', 'Cancelado'];
+const PAGO_CONFIRMADO: (PaymentStatus | undefined)[] = ['Pagado', 'Pagado en efectivo'];
+const claseEstadoPago = (e?: PaymentStatus) =>
+  e === 'Pagado' || e === 'Pagado en efectivo'
+    ? 'text-green-400 border-green-500/30 bg-green-500/5'
+    : e === 'Revision'
+    ? 'text-orange-400 border-orange-500/30 bg-orange-500/5'
+    : e === 'Vencido' || e === 'Cancelado'
+    ? 'text-red-400 border-red-500/30 bg-red-500/5'
+    : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/5';
 
 type TabId = 'dashboard' | 'orders' | 'products' | 'admins' | 'params' | 'security';
 
@@ -45,6 +55,10 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
   const [admins, setAdmins] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
+  const [filterPago, setFilterPago] = useState<string>('Todos');
+  // Registro manual de pago (efectivo o transferencia verificada): la nota es obligatoria
+  const [pagoManual, setPagoManual] = useState<{ order: Order; estado: 'Pagado en efectivo' | 'Pagado'; nota: string } | null>(null);
+  const [guardandoPago, setGuardandoPago] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -160,7 +174,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
 
   // Cambio de estado (el servidor valida la transición, repone stock al cancelar y registra el historial)
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
-    if (newStatus === 'Cancelado' && !window.confirm('¿Cancelar este pedido? Se devolverá el stock a inventario y no podrá reactivarse.')) return;
+    if (newStatus === 'Cancelado' && !window.confirm('¿Cancelar este pedido? Se devolverá el stock a inventario, se anulará el cobro QR pendiente y no podrá reactivarse.')) return;
     try {
       await api.admin.cambiarEstado(orderId, newStatus);
       addToast({ type: 'success', title: 'Estado Actualizado', message: `Pedido cambiado a ${newStatus}.` });
@@ -182,14 +196,33 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
       handleError(err, 'Error', 'No se pudo verificar el pago.');
     }
   };
-  const handlePagoConfirmar = async (orderId: string) => {
-    if (!window.confirm('¿Confirmar que este pedido ya fue pagado? Úselo solo si verificó el depósito en el banco.')) return;
+  const handlePagoManualGuardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pagoManual) return;
+    if (pagoManual.nota.trim().length < 3) {
+      addToast({ type: 'warning', title: 'Nota obligatoria', message: 'Indique quién pagó, cómo y el comprobante.' });
+      return;
+    }
+    setGuardandoPago(true);
     try {
-      await api.confirmarPagoAdmin(orderId);
-      addToast({ type: 'success', title: 'Pago confirmado', message: 'El pedido quedó marcado como pagado.' });
+      await api.confirmarPagoAdmin(pagoManual.order.id!, pagoManual.estado, pagoManual.nota.trim());
+      addToast({ type: 'success', title: 'Pago registrado', message: `${pagoManual.order.order_code}: ${pagoManual.estado}.` });
+      setPagoManual(null);
       fetchOrders();
     } catch (err) {
-      handleError(err, 'Error', 'No se pudo confirmar el pago.');
+      handleError(err, 'Error', 'No se pudo registrar el pago.');
+    } finally {
+      setGuardandoPago(false);
+    }
+  };
+  const handlePagoRegenerar = async (order: Order) => {
+    if (!window.confirm(`¿Generar un cobro QR nuevo para ${order.order_code}? El cobro anterior se anulará en la pasarela.`)) return;
+    try {
+      const o = await api.regenerarCobroAdmin(order.id!);
+      addToast({ type: 'success', title: 'Cobro regenerado', message: `Monto exacto: Bs ${o.payment_amount_exact?.toFixed(2) ?? '—'}.` });
+      fetchOrders();
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo regenerar el cobro.');
     }
   };
 
@@ -348,10 +381,19 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
   // Exportar CSV (HU09)
   const handleExportCsv = async () => {
     try {
-      await api.admin.descargarCsv({ estado: filterStatus, desde: dateFrom || undefined, hasta: dateTo || undefined });
+      await api.admin.descargarCsv({ estado: filterStatus, pago_estado: filterPago, desde: dateFrom || undefined, hasta: dateTo || undefined });
       addToast({ type: 'success', title: 'Reporte CSV', message: 'Archivo descargado (compatible con Excel).' });
     } catch (err) {
       handleError(err, 'Error', 'No se pudo generar el CSV.');
+    }
+  };
+  // Reporte de cobranza: ventas pagadas vs. pendientes (HU10)
+  const handleExportCobranzaCsv = async () => {
+    try {
+      await api.admin.descargarCsv({ desde: dateFrom || undefined, hasta: dateTo || undefined }, 'cobranza');
+      addToast({ type: 'success', title: 'Reporte de cobranza', message: 'Archivo descargado (compatible con Excel).' });
+    } catch (err) {
+      handleError(err, 'Error', 'No se pudo generar el reporte de cobranza.');
     }
   };
 
@@ -447,8 +489,18 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
         ganancia: Math.round(monthlySalesMap[key].profit)
       }));
 
+    const pagados = validos.filter(o => PAGO_CONFIRMADO.includes(o.payment_status));
+    const porCobrar = validos.filter(o => !PAGO_CONFIRMADO.includes(o.payment_status));
+    const sumar = (l: Order[]) => Math.round(l.reduce((a, o) => a + o.total_amount, 0) * 100) / 100;
+
     return {
       salesTotal,
+      paidCount: pagados.length,
+      paidTotal: sumar(pagados),
+      cashCount: pagados.filter(o => o.payment_status === 'Pagado en efectivo').length,
+      unpaidCount: porCobrar.length,
+      unpaidTotal: sumar(porCobrar),
+      reviewCount: orders.filter(o => o.payment_status === 'Revision').length,
       materialsCost: Math.round(materialsCostTotal),
       logisticsCost: Math.round(logisticsCostTotal),
       netProfit: Math.round(netProfitTotal),
@@ -593,6 +645,28 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                 <Download className="h-4 w-4" />
                 <span>Exportar Reporte PDF</span>
               </button>
+            </div>
+
+            {/* Cobranza: ventas pagadas vs. pendientes (HU10) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6" data-testid="cobranza">
+              <div className="glass rounded-2xl p-6 space-y-1">
+                <span className="text-[10px] font-bold text-dark-300 uppercase tracking-widest block">Ventas pagadas</span>
+                <span className="text-2xl font-display font-black text-green-400 block">{stats.paidTotal.toLocaleString()} Bs.</span>
+                <span className="text-xs text-dark-400">{stats.paidCount} pedidos · {stats.cashCount} en efectivo</span>
+              </div>
+              <div className="glass rounded-2xl p-6 space-y-1">
+                <span className="text-[10px] font-bold text-dark-300 uppercase tracking-widest block">Pendientes de pago</span>
+                <span className="text-2xl font-display font-black text-yellow-400 block">{stats.unpaidTotal.toLocaleString()} Bs.</span>
+                <span className="text-xs text-dark-400">{stats.unpaidCount} pedidos (sin cancelados)</span>
+              </div>
+              <div className="glass rounded-2xl p-6 flex flex-col justify-between gap-2">
+                <span className="text-[10px] font-bold text-dark-300 uppercase tracking-widest block">Pagos en revisión</span>
+                <span className={`text-2xl font-display font-black block ${stats.reviewCount ? 'text-orange-400' : 'text-white'}`}>{stats.reviewCount}</span>
+                <button type="button" onClick={handleExportCobranzaCsv}
+                  className="self-start py-1.5 px-3 flex items-center space-x-1.5 text-xs font-bold bg-dark-900 border border-dark-600 hover:border-agro-500 rounded-xl text-white">
+                  <Download className="h-3.5 w-3.5" /><span>Cobranza CSV</span>
+                </button>
+              </div>
             </div>
 
             {/* Cards metrics */}
@@ -863,6 +937,13 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                     </button>
                   ))}
                 </div>
+                <label className="flex items-center gap-2 text-xs text-dark-300">
+                  Pago
+                  <select value={filterPago} onChange={e => setFilterPago(e.target.value)} aria-label="Filtrar por estado de pago"
+                    className="bg-dark-900 border border-dark-600 rounded-lg px-2 py-1 text-white">
+                    {PAGOS_FILTRO.map(e => <option key={e} value={e}>{e === 'Todos' ? 'Todos' : ETIQUETA_PAGO[e]}</option>)}
+                  </select>
+                </label>
               </div>
             </div>
 
@@ -872,7 +953,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                   <span className="h-8 w-8 rounded-full border-4 border-agro-500 border-t-transparent animate-spin inline-block"></span>
                   <p className="text-sm font-semibold">Cargando despachos...</p>
                 </div>
-              ) : orders.filter(o => filterStatus === 'Todos' ? true : o.status === filterStatus).length === 0 ? (
+              ) : orders.filter(o => (filterStatus === 'Todos' ? true : o.status === filterStatus) && (filterPago === 'Todos' ? true : o.payment_status === filterPago)).length === 0 ? (
                 <div className="text-center py-12 text-dark-400 space-y-3">
                   <Truck className="h-12 w-12 mx-auto text-dark-500 stroke-1" />
                   <p className="text-sm">No se encontraron registros de despachos.</p>
@@ -893,7 +974,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                   </thead>
                   <tbody className="divide-y divide-dark-800 text-sm">
                     {orders
-                      .filter(o => filterStatus === 'Todos' ? true : o.status === filterStatus)
+                      .filter(o => (filterStatus === 'Todos' ? true : o.status === filterStatus) && (filterPago === 'Todos' ? true : o.payment_status === filterPago))
                       .map((order) => (
                         <tr key={order.id} className="hover:bg-dark-800/20 transition-all duration-300">
                           <td className="py-4 px-6">
@@ -936,24 +1017,23 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                             </select>
                           </td>
                           <td className="py-4 px-6 text-center">
-                            <span className={`inline-block text-[11px] font-bold rounded-lg px-2.5 py-1 border ${
-                              order.payment_status === 'Pagado'
-                                ? 'text-green-400 border-green-500/30 bg-green-500/5'
-                                : order.payment_status === 'Revision'
-                                ? 'text-orange-400 border-orange-500/30 bg-orange-500/5'
-                                : order.payment_status === 'Vencido' || order.payment_status === 'Cancelado'
-                                ? 'text-red-400 border-red-500/30 bg-red-500/5'
-                                : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/5'
-                            }`}>
-                              {order.payment_status === 'Revision' ? 'Revisar' : order.payment_status || 'Pendiente'}
+                            <span className={`inline-block text-[11px] font-bold rounded-lg px-2.5 py-1 border ${claseEstadoPago(order.payment_status)}`}>
+                              {ETIQUETA_PAGO[order.payment_status || 'Pendiente']}
                             </span>
-                            <span className="block text-[10px] text-dark-400 mt-1">{order.payment_method}</span>
-                            {order.payment_status !== 'Pagado' && order.status !== 'Cancelado' && (
-                              <span className="flex justify-center space-x-2 mt-1">
-                                {order.payment_method === 'QR' && (
+                            <span className="block text-[10px] text-dark-400 mt-1">
+                              {order.payment_method}
+                              {order.payment_method === 'QR' && order.payment_amount_exact != null && !PAGO_CONFIRMADO.includes(order.payment_status)
+                                ? ` · Bs ${order.payment_amount_exact.toFixed(2)}` : ''}
+                            </span>
+                            {!PAGO_CONFIRMADO.includes(order.payment_status) && order.status !== 'Cancelado' && (
+                              <span className="flex flex-wrap justify-center gap-x-2 mt-1">
+                                {order.payment_method === 'QR' && order.payment_id && (
                                   <button onClick={() => handlePagoVerificar(order.id!)} className="text-[10px] underline text-agro-accent hover:text-white" title="Consultar a la pasarela">Verificar</button>
                                 )}
-                                <button onClick={() => handlePagoConfirmar(order.id!)} className="text-[10px] underline text-dark-300 hover:text-white" title="Marcar como pagado manualmente">Confirmar</button>
+                                {order.payment_method === 'QR' && order.payment_status !== 'Revision' && order.status !== 'Entregado' && (
+                                  <button onClick={() => handlePagoRegenerar(order)} className="text-[10px] underline text-agro-accent hover:text-white" title="Anular el cobro actual y crear uno nuevo">Regenerar cobro</button>
+                                )}
+                                <button onClick={() => setPagoManual({ order, estado: 'Pagado en efectivo', nota: '' })} className="text-[10px] underline text-dark-300 hover:text-white" title="Registrar un pago recibido fuera de la pasarela">Pagado en efectivo</button>
                               </span>
                             )}
                           </td>
@@ -1675,6 +1755,41 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
         document.body
       )}
 
+      {/* Modal: registrar pago manual (efectivo o transferencia verificada) con nota obligatoria */}
+      {pagoManual && createPortal(
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-pago-manual">
+          <form onSubmit={handlePagoManualGuardar} className="glass rounded-2xl p-6 w-full max-w-md space-y-4 bg-dark-800">
+            <div className="flex items-center justify-between">
+              <h3 id="titulo-pago-manual" className="text-lg font-bold text-white">Registrar pago · {pagoManual.order.order_code}</h3>
+              <button type="button" onClick={() => setPagoManual(null)} className="text-dark-400 hover:text-white" aria-label="Cerrar"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-xs text-dark-300">
+              Total del pedido: <b className="text-white">{pagoManual.order.total_amount.toLocaleString()} Bs.</b> Si había un cobro QR pendiente se anulará en la pasarela.
+            </p>
+            <label className="block text-xs font-bold text-dark-300 uppercase">Tipo
+              <select value={pagoManual.estado} onChange={e => setPagoManual({ ...pagoManual, estado: e.target.value as 'Pagado en efectivo' | 'Pagado' })}
+                className="mt-1 w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-white normal-case font-normal">
+                <option value="Pagado en efectivo">Pagado en efectivo</option>
+                <option value="Pagado">Transferencia / depósito verificado</option>
+              </select>
+            </label>
+            <label className="block text-xs font-bold text-dark-300 uppercase">Nota (obligatoria)
+              <textarea required minLength={3} maxLength={500} rows={3} value={pagoManual.nota}
+                onChange={e => setPagoManual({ ...pagoManual, nota: e.target.value })}
+                placeholder="Quién pagó, dónde y número de recibo o comprobante"
+                className="mt-1 w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-white normal-case font-normal" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPagoManual(null)} className="px-4 py-2 text-xs font-bold text-dark-300 hover:text-white">Cancelar</button>
+              <button type="submit" disabled={guardandoPago} className="btn-gold px-4 py-2 text-xs text-dark-900 disabled:opacity-60">
+                {guardandoPago ? 'Guardando…' : 'Registrar pago'}
+              </button>
+            </div>
+          </form>
+        </div>,
+        document.body,
+      )}
+
       {/* Plantilla oculta para el PDF (A4 Portrait aprox proportion) */}
       <div 
         id="pdf-report-template" 
@@ -1714,6 +1829,23 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               <span className="text-xl font-black text-gray-900">{stats.tonsTotal} Tons</span>
             </div>
           </div>
+        </div>
+
+        {/* Cobranza */}
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-gray-800 border-b border-gray-200 pb-2 mb-4">Cobranza: ventas pagadas vs. pendientes</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="py-2">Estado de pago</th><th className="py-2 text-right">Pedidos</th><th className="py-2 text-right">Monto (Bs.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-gray-100"><td className="py-2 font-bold text-green-700">Pagadas (QR, efectivo y verificadas)</td><td className="py-2 text-right">{stats.paidCount}</td><td className="py-2 text-right font-bold">{stats.paidTotal.toLocaleString()}</td></tr>
+              <tr className="border-b border-gray-100"><td className="py-2 font-bold text-amber-700">Pendientes de pago</td><td className="py-2 text-right">{stats.unpaidCount}</td><td className="py-2 text-right font-bold">{stats.unpaidTotal.toLocaleString()}</td></tr>
+              <tr><td className="py-2 text-gray-600">De las pagadas, en efectivo</td><td className="py-2 text-right">{stats.cashCount}</td><td className="py-2 text-right">—</td></tr>
+            </tbody>
+          </table>
         </div>
 
         {/* Gráficos Principales */}

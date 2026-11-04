@@ -7,6 +7,8 @@ const { ORIGEN } = require('../models/fleteModel');
 const orderService = require('../services/orderService');
 const { responderError } = require('../utils/errors');
 const pasarela = require('../services/pasarelaService');
+const pagoService = require('../services/pagoService');
+const orderRepo = require('../models/orderRepository');
 
 async function productos(req, res) {
   try {
@@ -36,7 +38,11 @@ async function calcularFlete(req, res) {
 async function crearPedido(req, res) {
   try {
     const pedido = await orderService.crearPedido(req.body, 'cliente');
-    res.status(201).json(pedido);
+    // Opción A: el cobro QR se crea en el servidor justo después de registrar el pedido.
+    // Si la pasarela falla, el pedido queda igual "Pendiente de pago" y `pago.error` lo indica.
+    const pago = await pagoService.cobroInicial(pedido);
+    const actual = pago && !pago.error ? await orderRepo.obtenerPorId(pedido.id) : pedido;
+    res.status(201).json({ ...actual, pago });
   } catch (e) {
     responderError(res, e, 'crearPedido');
   }

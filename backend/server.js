@@ -8,6 +8,8 @@ const userRepo = require('./src/models/userRepository');
 const { obtenerJwtSecret, esProduccion } = require('./src/config/env');
 const { getSupabase } = require('./src/config/supabaseClient');
 const { COSTO_BCRYPT } = require('./src/controllers/authController');
+const pagoService = require('./src/services/pagoService');
+const pasarela = require('./src/services/pasarelaService');
 
 /** Crea el Superadmin inicial si no hay usuarios. Nunca hay contraseñas fijas en el código. */
 async function crearAdministradorInicial() {
@@ -36,6 +38,8 @@ async function main() {
   const puerto = Number(process.env.PORT) || 3001;
   crearApp().listen(puerto, () => {
     console.log(`[Servidor] API en el puerto ${puerto} (${getSupabase() ? 'Supabase' : 'modo memoria'})`);
+    console.log(`[Pagos] Pago QR ${pasarela.habilitada() ? 'habilitado' : 'deshabilitado'}`);
+    if (pagoService.iniciarReconciliador()) console.log('[Pagos] Respaldo por consulta de cobros pendientes activo');
   });
 }
 

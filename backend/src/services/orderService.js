@@ -103,7 +103,13 @@ async function crearPedido(body, usuario = 'cliente') {
 
 async function cambiarEstado(id, estadoEntrada, usuario) {
   const estado = exigir(v.validarEstado(estadoEntrada));
-  return orderRepo.actualizarEstado(id, estado, usuario);
+  const anterior = await orderRepo.obtenerPorId(id);
+  const pedido = await orderRepo.actualizarEstado(id, estado, usuario);
+  // Al cancelar: se anula también el cobro pendiente en la pasarela (el estado de pago es independiente)
+  if (estado === 'Cancelado' && anterior?.estado !== 'Cancelado') {
+    return require('./pagoService').alCancelarPedido(pedido, usuario);
+  }
+  return pedido;
 }
 
 module.exports = { calcularFlete, crearPedido, cambiarEstado, resolverItems };

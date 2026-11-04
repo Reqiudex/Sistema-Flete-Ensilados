@@ -2,13 +2,16 @@ import { jsPDF } from 'jspdf';
 import { CheckCircle2, Download, MessageSquare, Landmark, MapPin, Phone, User, Sprout, ArrowRight } from 'lucide-react';
 import { Order } from '../types';
 import PagoQr from './PagoQr';
+import type { PagoQr as PagoQrDatos } from '../api';
 
 interface ConfirmationProps {
   order: Order;
+  /** Cobro QR creado por el servidor al registrar el pedido */
+  pago?: PagoQrDatos | null;
   onBackToStart: () => void;
 }
 
-export default function Confirmation({ order, onBackToStart }: ConfirmationProps) {
+export default function Confirmation({ order, pago = null, onBackToStart }: ConfirmationProps) {
   
   // Generación del PDF ligero client-side con jsPDF
   const generatePDF = () => {
@@ -239,7 +242,7 @@ export default function Confirmation({ order, onBackToStart }: ConfirmationProps
 
           {/* Pago por QR (pasarela): solo pedidos ya registrados en el servidor */}
           {order.payment_method === 'QR' && order.order_code && !order.pending_sync && (
-            <PagoQr codigo={order.order_code} />
+            <PagoQr codigo={order.order_code} inicial={pago} />
           )}
 
           {/* Bank details panel */}

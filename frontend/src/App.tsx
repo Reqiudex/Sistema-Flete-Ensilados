@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import CatalogCart from './components/CatalogCart';
 import Confirmation from './components/Confirmation';
+import PagoQr from './components/PagoQr';
 import AdminDashboard from './components/AdminDashboard';
 import AuthScreen from './components/AuthScreen';
 import ToastContainer from './components/ToastContainer';
@@ -11,12 +12,18 @@ import { Product, CartItem, Order, UserProfile, Toast, NewOrderPayload, FleteQuo
 import * as api from './api';
 
 export default function App() {
-  const [currentView, setView] = useState<string>('landing'); // landing, catalog, confirmation, admin
+  // Retorno desde el checkout de la pasarela: /?pedido=ESC-1234 muestra el estado del pago de ese pedido
+  const [pedidoRetorno, setPedidoRetorno] = useState<string | null>(() => {
+    const c = new URLSearchParams(window.location.search).get('pedido')?.trim().toUpperCase() || '';
+    return /^ESC-\d{3,10}$/.test(c) ? c : null;
+  });
+  const [currentView, setView] = useState<string>(() => (pedidoRetorno ? 'pago' : 'landing')); // landing, catalog, confirmation, pago, admin
   const [products, setProducts] = useState<Product[]>([]);
   const [productsOffline, setProductsOffline] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
+  const [pagoInicial, setPagoInicial] = useState<api.PagoQr | null>(null);
 
   // Sesión de administrador: el token se valida con el servidor (GET /api/auth/me) al cargar
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -136,7 +143,7 @@ export default function App() {
   // Devuelve null si todo salió bien o un mensaje de error para mostrar en el formulario.
   const handleSubmitOrder = async (data: NewOrderPayload, quote: FleteQuote | null): Promise<string | null> => {
     try {
-      const { order, enviado } = await api.crearPedido(
+      const { order, enviado, pago } = await api.crearPedido(
         data,
         cart.map(i => ({
           product_id: i.product.id,
@@ -147,6 +154,7 @@ export default function App() {
         quote,
       );
       setSubmittedOrder(order);
+      setPagoInicial(pago ?? null);
       clearCart();
       setView('confirmation');
       if (enviado) loadProducts();
@@ -164,6 +172,11 @@ export default function App() {
 
   const handleBackToStart = () => {
     setSubmittedOrder(null);
+    setPagoInicial(null);
+    if (pedidoRetorno) {
+      setPedidoRetorno(null);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     setView('landing');
   };
 
@@ -333,8 +346,22 @@ export default function App() {
         {currentView === 'confirmation' && submittedOrder && (
           <Confirmation
             order={submittedOrder}
+            pago={pagoInicial}
             onBackToStart={handleBackToStart}
           />
+        )}
+
+        {currentView === 'pago' && pedidoRetorno && (
+          <section className="max-w-xl mx-auto px-4 py-12 space-y-6" aria-labelledby="titulo-estado-pago">
+            <div className="text-center space-y-1">
+              <h1 id="titulo-estado-pago" className="text-2xl font-extrabold text-gray-900">Pedido {pedidoRetorno}</h1>
+              <p className="text-sm text-gray-500">Estado del pago por QR</p>
+            </div>
+            <PagoQr codigo={pedidoRetorno} />
+            <button type="button" onClick={handleBackToStart} className="w-full text-sm font-bold text-agro-600 underline">
+              Volver al inicio
+            </button>
+          </section>
         )}
 
         {currentView === 'admin' && (

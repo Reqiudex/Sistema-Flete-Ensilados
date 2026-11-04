@@ -105,7 +105,9 @@ END $$;
 
 -- ------------------------------------------------------------
 -- Pagos por QR (pasarela-pagos): estado de pago del pedido y webhooks recibidos
--- pago_estado: Pendiente | Pagado | Vencido | Cancelado | Revision (requiere atención del administrador)
+-- pago_estado (separado del estado logístico):
+--   Pendiente (de pago) | Pagado (QR confirmado por la pasarela) | Pagado en efectivo (registro manual con nota)
+--   Vencido | Cancelado | Revision (requiere atención del administrador: monto distinto o pedido cancelado)
 -- ------------------------------------------------------------
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_estado       TEXT NOT NULL DEFAULT 'Pendiente';
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_id           TEXT;                -- id del cobro en la pasarela
@@ -116,13 +118,21 @@ ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pago_intentos     INT NOT NULL DEFA
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagado_en         TIMESTAMPTZ;
 DO $$
 BEGIN
+    -- Migración: la versión anterior del CHECK no admitía 'Pagado en efectivo'
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'pedidos'::regclass AND conname = 'pedidos_pago_estado_check'
+               AND pg_get_constraintdef(oid) NOT ILIKE '%efectivo%') THEN
+        ALTER TABLE pedidos DROP CONSTRAINT pedidos_pago_estado_check;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'pedidos'::regclass AND conname = 'pedidos_pago_estado_check') THEN
         ALTER TABLE pedidos ADD CONSTRAINT pedidos_pago_estado_check
-            CHECK (pago_estado IN ('Pendiente', 'Pagado', 'Vencido', 'Cancelado', 'Revision'));
+            CHECK (pago_estado IN ('Pendiente', 'Pagado', 'Pagado en efectivo', 'Vencido', 'Cancelado', 'Revision'));
     END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_pedidos_pago_estado ON pedidos (pago_estado);
 CREATE INDEX IF NOT EXISTS idx_pedidos_pago_id     ON pedidos (pago_id) WHERE pago_id IS NOT NULL;
+-- Reportes de cobranza (pagadas vs. pendientes por rango de fechas) y respaldo de cobros pendientes
+CREATE INDEX IF NOT EXISTS idx_pedidos_pago_fecha  ON pedidos (pago_estado, creado_en DESC);
+CREATE INDEX IF NOT EXISTS idx_pedidos_pago_pend   ON pedidos (pago_vence_en) WHERE pago_estado = 'Pendiente' AND pago_id IS NOT NULL;
 
 -- Idempotencia de webhooks: cada entrega (X-Pasarela-Delivery) se procesa una sola vez
 CREATE TABLE IF NOT EXISTS pagos_webhook_entregas (
@@ -131,6 +141,20 @@ CREATE TABLE IF NOT EXISTS pagos_webhook_entregas (
     pedido_id    UUID REFERENCES pedidos(id) ON DELETE CASCADE,
     recibido_en  TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_webhook_recibido ON pagos_webhook_entregas (recibido_en);
+
+-- Historial de pagos: cada cambio de pago_estado (webhook, consulta, administrador) con su origen y nota
+CREATE TABLE IF NOT EXISTS historial_pagos (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pedido_id       UUID NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+    estado_anterior TEXT,
+    estado_nuevo    TEXT NOT NULL,
+    cobro_id        TEXT,
+    usuario         TEXT NOT NULL DEFAULT 'sistema',   -- 'pasarela', 'consulta', 'cliente' o correo del administrador
+    nota            TEXT,
+    creado_en       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_historial_pagos ON historial_pagos (pedido_id, creado_en);
 
 -- ------------------------------------------------------------
 -- detalle_pedido (HU03): una línea por producto y pedido
@@ -269,11 +293,60 @@ BEGIN
     VALUES (p_id, v_actual, p_estado, COALESCE(p_usuario, 'sistema'));
 END; $$ LANGUAGE plpgsql;
 
+-- ------------------------------------------------------------
+-- RPC registrar_pago_pedido: cambia los datos de pago en UNA transacción.
+--   * Si llega p_entrega (X-Pasarela-Delivery), la registra; si ya existía devuelve duplicado=true y no hace nada.
+--   * Bloquea la fila del pedido (FOR UPDATE) para serializar webhooks, consultas y acciones del administrador.
+--   * Un pago confirmado (Pagado / Pagado en efectivo) nunca se degrada.
+--   * Registra el cambio en historial_pagos.
+-- No toca estado logístico, stock ni importes del pedido.
+-- Errores: PEDIDO_NO_ENCONTRADO
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION registrar_pago_pedido(
+    p_id UUID, p_cambios JSONB, p_usuario TEXT DEFAULT 'sistema', p_nota TEXT DEFAULT NULL,
+    p_entrega TEXT DEFAULT NULL, p_evento TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE v_actual TEXT; v_nuevo TEXT;
+BEGIN
+    SELECT pago_estado INTO v_actual FROM pedidos WHERE id = p_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'PEDIDO_NO_ENCONTRADO'; END IF;
+
+    IF p_entrega IS NOT NULL THEN
+        INSERT INTO pagos_webhook_entregas (entrega_id, evento, pedido_id)
+        VALUES (p_entrega, COALESCE(p_evento, ''), p_id)
+        ON CONFLICT (entrega_id) DO NOTHING;
+        IF NOT FOUND THEN RETURN jsonb_build_object('aplicado', false, 'duplicado', true); END IF;
+    END IF;
+
+    v_nuevo := COALESCE(p_cambios->>'pago_estado', v_actual);
+    IF v_actual IN ('Pagado', 'Pagado en efectivo') AND v_nuevo NOT IN ('Pagado', 'Pagado en efectivo') THEN
+        RETURN jsonb_build_object('aplicado', false, 'duplicado', false);
+    END IF;
+
+    UPDATE pedidos SET
+        pago_estado       = v_nuevo,
+        pago_id           = CASE WHEN p_cambios ? 'pago_id'           THEN p_cambios->>'pago_id'                       ELSE pago_id END,
+        pago_total_bs     = CASE WHEN p_cambios ? 'pago_total_bs'     THEN (p_cambios->>'pago_total_bs')::NUMERIC      ELSE pago_total_bs END,
+        pago_checkout_url = CASE WHEN p_cambios ? 'pago_checkout_url' THEN p_cambios->>'pago_checkout_url'             ELSE pago_checkout_url END,
+        pago_vence_en     = CASE WHEN p_cambios ? 'pago_vence_en'     THEN (p_cambios->>'pago_vence_en')::TIMESTAMPTZ  ELSE pago_vence_en END,
+        pago_intentos     = CASE WHEN p_cambios ? 'pago_intentos'     THEN (p_cambios->>'pago_intentos')::INT          ELSE pago_intentos END,
+        pagado_en         = CASE WHEN p_cambios ? 'pagado_en'         THEN (p_cambios->>'pagado_en')::TIMESTAMPTZ      ELSE pagado_en END
+    WHERE id = p_id;
+
+    IF v_nuevo IS DISTINCT FROM v_actual OR p_nota IS NOT NULL OR p_cambios ? 'pago_id' THEN
+        INSERT INTO historial_pagos (pedido_id, estado_anterior, estado_nuevo, cobro_id, usuario, nota)
+        SELECT p_id, v_actual, v_nuevo, pago_id, COALESCE(p_usuario, 'sistema'), p_nota FROM pedidos WHERE id = p_id;
+    END IF;
+    RETURN jsonb_build_object('aplicado', true, 'duplicado', false);
+END; $$ LANGUAGE plpgsql;
+
 -- Las funciones solo las ejecuta el backend (service_role)
 REVOKE ALL ON FUNCTION crear_pedido(JSONB, JSONB) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION actualizar_estado_pedido(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION registrar_pago_pedido(UUID, JSONB, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION crear_pedido(JSONB, JSONB) TO service_role;
 GRANT EXECUTE ON FUNCTION actualizar_estado_pedido(UUID, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION registrar_pago_pedido(UUID, JSONB, TEXT, TEXT, TEXT, TEXT) TO service_role;
 
 -- ------------------------------------------------------------
 -- Datos semilla: catálogo inicial (HU02). Solo si el catálogo está vacío.
@@ -287,8 +360,9 @@ SELECT * FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM productos);
 
 -- ------------------------------------------------------------
--- Row Level Security: todo bloqueado salvo lectura pública de productos activos.
--- El backend (service_role) omite RLS; el navegador nunca accede directamente a las tablas.
+-- Row Level Security estricta: ningún acceso para anon/authenticated.
+-- El backend (service_role) omite RLS; el navegador nunca accede directamente a las tablas
+-- (el catálogo se sirve por la API). Además se revocan los privilegios de tabla.
 -- ------------------------------------------------------------
 ALTER TABLE productos         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usuarios          ENABLE ROW LEVEL SECURITY;
@@ -297,6 +371,7 @@ ALTER TABLE detalle_pedido    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_pedidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parametros_flete  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos_webhook_entregas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE historial_pagos   ENABLE ROW LEVEL SECURITY;
 
 -- Se eliminan políticas permisivas de la versión 1 si existían
 DROP POLICY IF EXISTS "productos_admin_full"        ON productos;
@@ -306,8 +381,25 @@ DROP POLICY IF EXISTS "pedidos_admin_update"        ON pedidos;
 DROP POLICY IF EXISTS "detalle_insercion_publica"   ON detalle_pedido;
 DROP POLICY IF EXISTS "detalle_admin_lectura"       ON detalle_pedido;
 
+-- La versión 2.0 permitía a anon leer productos activos; ya no hace falta (el catálogo pasa por la API)
 DROP POLICY IF EXISTS "productos_lectura_publica" ON productos;
-CREATE POLICY "productos_lectura_publica" ON productos FOR SELECT USING (activo = true);
+
+DO $$
+DECLARE r TEXT;
+BEGIN
+    FOR r IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated') LOOP
+        EXECUTE format('REVOKE ALL ON productos, usuarios, parametros_flete, pedidos, detalle_pedido, historial_pedidos, '
+                       'pagos_webhook_entregas, historial_pagos FROM %I', r);
+        EXECUTE format('REVOKE ALL ON SEQUENCE seq_codigo_pedido FROM %I', r);
+    END LOOP;
+    -- El backend usa service_role. En el esquema public Supabase ya le da acceso; en un esquema propio
+    -- (SUPABASE_SCHEMA=tesis, ejecutado con SET search_path = tesis) hay que concederlo explícitamente.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        EXECUTE format('GRANT USAGE ON SCHEMA %I TO service_role', current_schema());
+        EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA %I TO service_role', current_schema());
+        EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO service_role', current_schema());
+    END IF;
+END $$;
 
 -- ============================================================
 -- FIN DEL SCRIPT

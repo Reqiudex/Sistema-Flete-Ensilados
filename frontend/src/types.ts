@@ -24,7 +24,17 @@ export interface OrderItem {
 
 export type OrderStatus = 'Pendiente' | 'En Camino' | 'Entregado' | 'Cancelado';
 export type PaymentMethod = 'QR' | 'Transferencia' | 'WhatsApp';
-export type PaymentStatus = 'Pendiente' | 'Pagado' | 'Vencido' | 'Cancelado' | 'Revision';
+export type PaymentStatus = 'Pendiente' | 'Pagado' | 'Pagado en efectivo' | 'Vencido' | 'Cancelado' | 'Revision';
+
+/** Texto para mostrar de cada estado de pago */
+export const ETIQUETA_PAGO: Record<PaymentStatus, string> = {
+  Pendiente: 'Pendiente de pago',
+  Pagado: 'Pagado',
+  'Pagado en efectivo': 'Pagado en efectivo',
+  Vencido: 'Vencido',
+  Cancelado: 'Cancelado',
+  Revision: 'En revisión',
+};
 
 export interface Order {
   id?: string;
@@ -45,6 +55,11 @@ export interface Order {
   payment_method: PaymentMethod;
   payment_status?: PaymentStatus;
   paid_at?: string | null;
+  /** id del cobro en la pasarela */
+  payment_id?: string | null;
+  /** monto exacto del cobro QR (total + centavo único) */
+  payment_amount_exact?: number | null;
+  payment_expires_at?: string | null;
   status: OrderStatus;
   created_at?: string;
   items?: OrderItem[];

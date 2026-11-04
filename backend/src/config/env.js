@@ -69,19 +69,30 @@ function googleMapsKey() {
 
 /**
  * Configuración de la pasarela de pagos QR (repositorio pasarela-pagos).
- * Si falta alguna de las tres variables, el cobro por QR queda deshabilitado (el resto del sistema sigue funcionando).
+ * El cobro por QR queda deshabilitado (el resto del sistema sigue funcionando) si PAGOS_QR_HABILITADO=false
+ * o si falta alguna de las tres variables PASARELA_API_URL (alias PASARELA_BASE_URL), PASARELA_API_KEY, PASARELA_SECRET.
  */
+function pagosQrInterruptor() {
+  const v = (process.env.PAGOS_QR_HABILITADO ?? '').trim().toLowerCase();
+  return !['false', '0', 'no', 'off'].includes(v);
+}
+
 function pasarelaConfig() {
-  const baseUrl = (process.env.PASARELA_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (!pagosQrInterruptor()) return null;
+  const baseUrl = (process.env.PASARELA_API_URL || process.env.PASARELA_BASE_URL || '').trim().replace(/\/+$/, '');
   const apiKey = (process.env.PASARELA_API_KEY || '').trim();
   const secret = (process.env.PASARELA_SECRET || '').trim();
   if (!baseUrl || !apiKey || !secret) return null;
-  const exp = Number(process.env.PASARELA_EXPIRA_SEGUNDOS);
+  const numero = (k) => ((process.env[k] || '').trim() === '' ? NaN : Number(process.env[k]));
+  const exp = numero('PASARELA_EXPIRA_SEGUNDOS');
+  const rec = numero('PAGOS_RECONCILIAR_SEGUNDOS');
   return {
     baseUrl,
     apiKey,
     secret,
-    expiraSegundos: Number.isFinite(exp) ? Math.min(900, Math.max(60, Math.round(exp))) : 600,
+    expiraSegundos: Number.isFinite(exp) && exp > 0 ? Math.min(900, Math.max(60, Math.round(exp))) : 600,
+    // Respaldo por consulta (GET /v1/payments/{id}) de cobros pendientes; 0 lo desactiva
+    reconciliarSegundos: Number.isFinite(rec) && rec >= 0 ? Math.round(rec) : 60,
   };
 }
 
