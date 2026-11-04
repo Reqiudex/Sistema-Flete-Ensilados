@@ -35,3 +35,4 @@ docker-compose.override.yml
 # Copias de seguridad / temporales
 *.bak
 .claude/
+CLAUDE.md

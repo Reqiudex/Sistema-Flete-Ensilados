@@ -1,4 +1,4 @@
-# CLAUDE.md — Ensilados Santa Cruz (tesis + sistema)
+# AGENTS.md — Ensilados Santa Cruz (tesis + sistema)
 
 Plataforma web de compras y cálculo de fletes para Ensilados Santa Cruz (San Ramón, Bolivia). Tesis de grado UDABOL 2026 (Jorge Luciano Ortubé Flores).
 
