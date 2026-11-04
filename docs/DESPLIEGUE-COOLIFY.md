@@ -36,7 +36,7 @@ La app antigua **flete-ensilados** (rama `coolify-deploy`, puertos 8087/3002, do
 | Variable | Valor |
 |---|---|
 | `JWT_SECRET` | aleatorio de 32+ caracteres (`openssl rand -hex 32`) |
-| `SUPABASE_URL` | `https://dbtesis.cerice360.com` |
+| `SUPABASE_URL` | `https://dbtesis.cerice360.com`. Más robusto (no depende del túnel): active en *tesis-v2 → Advanced* **Connect To Predefined Network** y use `http://supabase-kong-bx4ixq11kl7vwnrall5bdty0:8000` |
 | `SUPABASE_SERVICE_ROLE_KEY` | clave service_role (solo backend) |
 | `SUPABASE_SCHEMA` | `tesis` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Superadmin inicial (solo se usa si no hay usuarios) |
