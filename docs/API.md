@@ -2,7 +2,7 @@
 
 Base: `/api` (producción: `https://api.tesis.cherry.lat/api`). JSON UTF-8. Los campos van en español.
 Errores: `{ "error": "mensaje", "codigo": "CODIGO_ESTABLE" }` con el estado HTTP correspondiente.
-Rutas `/admin/*` y las marcadas 🔒 requieren `Authorization: Bearer <token>`. 🔑 = solo Superadmin.
+Rutas `/admin/*` y las marcadas (auth) requieren `Authorization: Bearer <token>`. (superadmin) = solo Superadmin.
 
 ## Público
 
@@ -27,11 +27,11 @@ Códigos de error frecuentes: `NOMBRE_INVALIDO`, `TELEFONO_INVALIDO`, `COORDENAD
 |---|---|
 | `POST /auth/login` | `{email, password}` → `{token, usuario}` o, con 2FA activo, `{requiere_2fa:true, token_preauth}` (válido 5 min) |
 | `POST /auth/verify-2fa` | `{token_preauth, codigo}` → `{token, usuario}` |
-| `GET /auth/me` 🔒 | Usuario actual |
-| `POST /auth/2fa/setup` 🔒 | Genera secreto TOTP → `{secreto, otpauth_url}` (se muestra como QR) |
-| `POST /auth/2fa/enable` 🔒 | `{codigo}` confirma y activa el 2FA |
-| `POST /auth/2fa/disable` 🔒 | `{password, codigo}` |
-| `POST /auth/change-password` 🔒 | `{password_actual, password_nueva}` (8–72 caracteres) |
+| `GET /auth/me` (auth) | Usuario actual |
+| `POST /auth/2fa/setup` (auth) | Genera secreto TOTP → `{secreto, otpauth_url}` (se muestra como QR) |
+| `POST /auth/2fa/enable` (auth) | `{codigo}` confirma y activa el 2FA |
+| `POST /auth/2fa/disable` (auth) | `{password, codigo}` |
+| `POST /auth/change-password` (auth) | `{password_actual, password_nueva}` (8–72 caracteres) |
 
 Login y verify-2fa: máx. 10 intentos / 15 min por IP.
 
@@ -50,7 +50,7 @@ Login y verify-2fa: máx. 10 intentos / 15 min por IP.
 | `GET /admin/reports/cobranza.csv?desde&hasta` | Cobranza: pedidos y montos por estado de pago, total pagado y pendiente |
 | `GET /admin/reports/orders.csv` | CSV (`;`, UTF-8 con BOM, compatible con Excel) |
 | `GET /admin/products` · `POST` · `PUT /:id` | Catálogo completo (incluye inactivos) / crear / modificar (también `activo`) |
-| `DELETE /admin/products/:id` 🔑 | Desactiva el producto (los pedidos históricos se conservan) |
+| `DELETE /admin/products/:id` (superadmin) | Desactiva el producto (los pedidos históricos se conservan) |
 
 ## Solo Superadmin
 

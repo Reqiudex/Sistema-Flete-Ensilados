@@ -69,12 +69,12 @@ Si el pago QR no está disponible, solo verá *Transferencia* y *WhatsApp*. Los 
 
 | Función | Admin | Superadmin |
 |---|:--:|:--:|
-| Estadísticas, pedidos, ventas directas, CSV/PDF | ✔ | ✔ |
-| Crear y editar productos | ✔ | ✔ |
-| Desactivar / reactivar productos | — | ✔ |
-| Administrar usuarios | — | ✔ |
-| Editar tarifas de flete | — | ✔ |
-| Contraseña propia y 2FA | ✔ | ✔ |
+| Estadísticas, pedidos, ventas directas, CSV/PDF | Sí | Sí |
+| Crear y editar productos | Sí | Sí |
+| Desactivar / reactivar productos | — | Sí |
+| Administrar usuarios | — | Sí |
+| Editar tarifas de flete | — | Sí |
+| Contraseña propia y 2FA | Sí | Sí |
 
 ### 2.2 Estadísticas (HU09)
 Arriba se resume la **cobranza**: *Ventas pagadas* (QR, efectivo y verificadas), *Pendientes de pago* y *Pagos en revisión*, con el botón **Cobranza CSV**. El **Reporte PDF** incluye la misma tabla de pagadas vs. pendientes.
@@ -86,7 +86,7 @@ Pestaña **Estadísticas & CRM**: ventas totales, ganancia neta estimada, tonela
 Pestaña **Gestión Pedidos**:
 - Filtre por estado (Todos, Pendiente, En Camino, Entregado, Cancelado) y por fechas.
 - Cambie el **estado** con el selector. Solo se ofrecen las transiciones permitidas: *Pendiente ⇄ En Camino*, y desde cualquiera de ellos a *Entregado* o *Cancelado*. **Entregado y Cancelado son finales.**
-- **Cancelar** (icono ✕) pide confirmación y **devuelve el stock** al inventario. Los pedidos no se eliminan: quedan registrados con su historial de estados (quién y cuándo).
+- **Cancelar** (icono X) pide confirmación y **devuelve el stock** al inventario. Los pedidos no se eliminan: quedan registrados con su historial de estados (quién y cuándo).
 - En pedidos *En Camino* el botón **Ruta** abre Google Maps con el trayecto planta → finca para el chofer.
 - **Exportar CSV** descarga los pedidos filtrados (separador `;`, abre directo en Excel).
 - La columna **Pago** muestra el estado del cobro: *Pendiente de pago*, *Pagado*, *Pagado en efectivo*, *Vencido*, *Cancelado* o *En revisión*, y en pedidos QR el **monto exacto** del cobro vigente. El selector **Pago** filtra la lista por estado de pago. El estado de pago es independiente del estado logístico (Pendiente / En Camino / Entregado / Cancelado).
