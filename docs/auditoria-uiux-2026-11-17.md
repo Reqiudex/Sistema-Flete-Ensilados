@@ -175,3 +175,32 @@ pedidos nuevos y el menú móvil. Backend: 47/47 pruebas. `npm run typecheck` y 
   prefiere) y redeploy de `tesis-v2` en Coolify. Mientras tanto, Coolify conserva la imagen anterior para
   redesplegarla desde su historial de despliegues.
 - No hay cambios de base de datos ni de variables de entorno.
+
+## Publicado en producción (17/11/2026, 12:07)
+
+- Commit `7b95657` en `main`; Coolify desplegó `tesis-v2` solo (frontend y backend sanos).
+- Respaldo previo: `~/respaldo/manual/tesis-v2-20261117-1207/` (archivos servidos, configuración de Nginx e
+  imágenes del commit anterior `cddfd0b`).
+- `~/check-webs.sh` idéntico antes y después: 16 en línea, 0 fallas, 5 apagadas a propósito.
+
+| Medida en `https://tesis.cerice360.com` | Antes | Después |
+|---|---|---|
+| Lighthouse móvil (mediana de 3) | 70 | **87** (81-93; servidor con carga alta) |
+| Lighthouse escritorio | 94 | **94** |
+| Accesibilidad / buenas prácticas | 95 / 100 | **100 / 100** |
+| SEO | 91 | **92** (90 en escritorio) |
+| CLS | 0,013 | **0** |
+| Violaciones axe, 28 vistas (7 vistas × 4 anchos) | 6 tipos | **0** |
+| Cabeceras de seguridad en `/assets/` | ninguna | todas, más COOP |
+
+SEO no llega a 100 en producción porque Cloudflare antepone su `robots.txt` gestionado ("Content-Signal"),
+que Lighthouse marca como inválido. Es un ajuste de la zona `cerice360.com` en Cloudflare, común a todas las
+webs; el `robots.txt` propio de la app va a continuación y es válido. Decisión de Luciano si se desactiva.
+
+## Pendiente
+
+- Google Maps (`ApiProjectMapError`): habilitar "Maps JavaScript API" y facturación en el proyecto de Google
+  Cloud de la clave, con referentes `https://tesis.cerice360.com/*` y `https://tesis.cherry.lat/*`.
+- Confirmar teléfono, correo, cuenta bancaria y NIT del pie, la confirmación y el PDF, y los servicios
+  "llave en mano" de la portada.
+- El repositorio no tiene configuración de ESLint (`npm run lint` falla desde antes de estos cambios).
