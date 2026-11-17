@@ -56,8 +56,8 @@ export default {
         info:    '#3b82f6',
       },
       fontFamily: {
-        sans:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Outfit', 'system-ui', 'sans-serif'],
+        sans:    ['"Inter Variable"', 'system-ui', 'sans-serif'],
+        display: ['"Outfit Variable"', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
         'gradient-agro':    'linear-gradient(135deg, #1b4332 0%, #2d6a4f 50%, #4ab57f 100%)',

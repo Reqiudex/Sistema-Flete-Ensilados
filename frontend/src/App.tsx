@@ -1,13 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowRight, Sprout, Tractor, Droplets, Wheat, Plane } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { ArrowRight, Sprout, Tractor, Droplets, Wheat, Plane, Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import CatalogCart from './components/CatalogCart';
-import Confirmation from './components/Confirmation';
-import PagoQr from './components/PagoQr';
-import AdminDashboard from './components/AdminDashboard';
-import AuthScreen from './components/AuthScreen';
 import ToastContainer from './components/ToastContainer';
+
+// Vistas pesadas (PDF, QR, gráficos del panel) se descargan solo cuando se abren
+const Confirmation = lazy(() => import('./components/Confirmation'));
+const PagoQr = lazy(() => import('./components/PagoQr'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const AuthScreen = lazy(() => import('./components/AuthScreen'));
+
+const TITULOS: Record<string, string> = {
+  landing: 'Ensilados Santa Cruz | Silo de maíz, soya y sorgo con flete calculado',
+  catalog: 'Catálogo y cotización de flete | Ensilados Santa Cruz',
+  confirmation: 'Pedido registrado | Ensilados Santa Cruz',
+  pago: 'Estado del pago | Ensilados Santa Cruz',
+  admin: 'Administración | Ensilados Santa Cruz',
+};
+
+function Cargando({ texto = 'Cargando…' }: { texto?: string }) {
+  return (
+    <div className="py-24 flex items-center justify-center gap-2 text-gray-500 text-sm" role="status">
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+      <span>{texto}</span>
+    </div>
+  );
+}
 import { Product, CartItem, Order, UserProfile, Toast, NewOrderPayload, FleteQuote } from './types';
 import * as api from './api';
 
@@ -21,6 +40,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsOffline, setProductsOffline] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [pagoInicial, setPagoInicial] = useState<api.PagoQr | null>(null);
@@ -80,6 +100,8 @@ export default function App() {
       setProductsError(null);
     } catch (err) {
       setProductsError(api.mensajeError(err, 'No se pudo cargar el catálogo.'));
+    } finally {
+      setProductsLoading(false);
     }
   }, []);
 
@@ -107,6 +129,22 @@ export default function App() {
     window.addEventListener('online', alVolverRed);
     return () => window.removeEventListener('online', alVolverRed);
   }, [loadProducts, sincronizar]);
+
+  // Al cambiar de vista: volver arriba, mover el foco al contenido (teclado y lector de pantalla) y actualizar el título
+  const mainRef = useRef<HTMLElement>(null);
+  const primeraVista = useRef(true);
+  useEffect(() => {
+    document.title = TITULOS[currentView] || TITULOS.landing;
+    if (primeraVista.current) { primeraVista.current = false; return; }
+    window.scrollTo({ top: 0 });
+    mainRef.current?.focus({ preventScroll: true });
+  }, [currentView]);
+
+  // El botón del carrito de la cabecera lleva al catálogo y muestra el carrito
+  const irAlCarrito = () => {
+    setView('catalog');
+    window.setTimeout(() => document.getElementById('carrito')?.scrollIntoView({ block: 'start' }), 60);
+  };
 
   // Cart operations
   const addToCart = (product: Product, qty: number) => {
@@ -181,55 +219,57 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-gray-50/50">
-      
+    <div className="min-h-screen flex flex-col justify-between bg-gray-50 text-gray-900">
+      <a href="#contenido" className="saltar-contenido">Saltar al contenido</a>
+
       <Header
         currentView={currentView}
         setView={setView}
+        onCartClick={irAlCarrito}
         cartCount={cart.reduce((sum, item) => sum + item.quantityTons, 0)}
         user={user}
         onLogout={handleLogout}
       />
 
       {/* Main Content Areas */}
-      <main className="flex-grow relative z-10">
+      <main id="contenido" ref={mainRef} tabIndex={-1} className="flex-grow relative z-10 focus:outline-none">
         {currentView === 'landing' && (
           <div className="space-y-16 pb-16">
             
             {/* Hero Section */}
             <section className="relative overflow-hidden bg-agro-600 text-white py-24 sm:py-32 px-4 shadow-lg">
               {/* Decorative elements */}
-              <div className="absolute inset-0 opacity-10">
+              <div className="absolute inset-0 opacity-10" aria-hidden="true">
                 <div className="absolute -top-10 -left-10 w-40 h-40 bg-white rounded-full blur-2xl"></div>
-                <div className="absolute bottom-10 right-10 w-60 h-60 bg-agro-accent rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute bottom-10 right-10 w-60 h-60 bg-agro-accent rounded-full blur-3xl"></div>
               </div>
 
               <div className="max-w-5xl mx-auto text-center space-y-6 relative z-10">
-                <span className="inline-flex items-center gap-1.5 bg-agro-500/50 text-agro-accent font-extrabold text-xs uppercase tracking-widest px-4 py-2 rounded-full border border-agro-accent/20">
-                  <Sprout className="h-4 w-4" /> Logística Agrícola Digital en Santa Cruz
+                <span className="inline-flex items-center gap-1.5 bg-agro-700 text-agro-accent font-extrabold text-xs uppercase tracking-widest px-4 py-2 rounded-full border border-agro-accent/20">
+                  <Sprout className="h-4 w-4" aria-hidden="true" /> San Ramón · Santa Cruz, Bolivia
                 </span>
                 <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight font-sans">
                   Ensilados de Alta Calidad para su Ganadería
                 </h1>
                 <p className="text-agro-100 text-lg sm:text-xl max-w-2xl mx-auto font-light">
-                  Suministro garantizado de Silo de Maíz, Soya y Sorgo. Cotice automáticamente el costo de envío geolocalizando su finca en tiempo real.
+                  Silo de maíz, sorgo y soya puestos en su finca. Elija las toneladas, marque su propiedad en el mapa y vea al instante el costo del flete y el total.
                 </p>
                 <div className="pt-6 flex flex-col sm:flex-row justify-center items-center gap-4">
                   <button
                     onClick={() => setView('catalog')}
                     className="w-full sm:w-auto bg-agro-accent hover:bg-agro-accentHover text-agro-900 py-3.5 px-8 rounded-xl font-extrabold text-base transition-all shadow-md flex items-center justify-center space-x-2"
                   >
-                    <span>Cotizar Ensilado y Flete</span>
-                    <ArrowRight className="h-5 w-5" />
+                    <span>Cotizar ensilado y flete</span>
+                    <ArrowRight className="h-5 w-5" aria-hidden="true" />
                   </button>
                   <button
                     onClick={() => {
-                      const element = document.getElementById('about');
+                      const element = document.getElementById('como-funciona');
                       element?.scrollIntoView({ behavior: 'smooth' });
                     }}
-                    className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white border border-white/20 py-3.5 px-8 rounded-xl font-semibold text-base transition-all"
+                    className="w-full sm:w-auto bg-agro-700 hover:bg-agro-800 text-white border border-white/30 py-3.5 px-8 rounded-xl font-semibold text-base transition-all"
                   >
-                    Conocer Más
+                    Cómo funciona
                   </button>
                 </div>
               </div>
@@ -239,20 +279,53 @@ export default function App() {
             <section className="max-w-6xl mx-auto px-4 -mt-10 sm:-mt-16 relative z-20">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center space-y-2">
-                  <div className="text-3xl font-extrabold text-agro-500">San Ramón</div>
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Central de Silos</span>
-                  <p className="text-sm text-gray-500">Ubicación estratégica para distribución departamental.</p>
+                  <p className="text-3xl font-extrabold text-agro-500">San Ramón</p>
+                  <p className="text-xs text-gray-600 font-bold uppercase tracking-wider">Central de silos</p>
+                  <p className="text-sm text-gray-600">Ubicación estratégica para distribuir en todo el departamento.</p>
                 </div>
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center space-y-2">
-                  <div className="text-3xl font-extrabold text-agro-500">SIG Integrado</div>
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Cálculo Preciso</span>
-                  <p className="text-sm text-gray-500">Adiós a las llamadas infinitas. Flete matemático según distancia real.</p>
+                  <p className="text-3xl font-extrabold text-agro-500">Flete al instante</p>
+                  <p className="text-xs text-gray-600 font-bold uppercase tracking-wider">Según la distancia real</p>
+                  <p className="text-sm text-gray-600">Marque su finca en el mapa y conozca el costo del transporte sin tener que llamar.</p>
                 </div>
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center space-y-2">
-                  <div className="text-3xl font-extrabold text-agro-500">Modo Offline</div>
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Resiliencia Rural</span>
-                  <p className="text-sm text-gray-500">Cotice con el catálogo guardado, su pedido se envía solo al volver la señal y puede descargar su recibo PDF.</p>
+                  <p className="text-3xl font-extrabold text-agro-500">Funciona sin señal</p>
+                  <p className="text-xs text-gray-600 font-bold uppercase tracking-wider">Pensado para el campo</p>
+                  <p className="text-sm text-gray-600">Cotice con el catálogo guardado: su pedido se envía solo al volver la señal y puede descargar su comprobante en PDF.</p>
                 </div>
+              </div>
+            </section>
+
+            {/* Cómo funciona: los tres pasos del pedido */}
+            <section id="como-funciona" aria-labelledby="titulo-como-funciona" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 scroll-mt-24">
+              <div className="text-center max-w-2xl mx-auto space-y-2">
+                <h2 id="titulo-como-funciona" className="text-3xl font-extrabold text-agro-600">Cómo hacer su pedido</h2>
+                <p className="text-gray-600 text-sm">Tres pasos, desde el celular o la computadora.</p>
+              </div>
+              <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[
+                  { t: 'Elija el ensilado', d: 'Indique cuántas toneladas necesita de silo de maíz, sorgo o soya. Verá el precio por tonelada y el stock disponible.' },
+                  { t: 'Marque su finca', d: 'Ubique su propiedad en el mapa. El sistema calcula la distancia desde San Ramón, los viajes de camión y el costo del flete.' },
+                  { t: 'Confirme y pague', d: 'Deje su nombre y celular. Pague con QR desde su banco, por transferencia o coordine por WhatsApp. Descargue su comprobante.' },
+                ].map((p, i) => (
+                  <li key={p.t} className="bg-white rounded-2xl border border-gray-200 p-6 flex gap-4">
+                    <span className="shrink-0 w-10 h-10 rounded-full bg-agro-500 text-white font-extrabold flex items-center justify-center" aria-hidden="true">{i + 1}</span>
+                    <div>
+                      <h3 className="font-extrabold text-gray-900 text-lg mb-1">{p.t}</h3>
+                      <p className="text-gray-600 text-sm leading-relaxed">{p.d}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setView('catalog')}
+                  className="inline-flex items-center gap-2 bg-agro-500 hover:bg-agro-600 text-white py-3 px-7 rounded-xl font-extrabold transition-colors"
+                >
+                  <span>Empezar mi pedido</span>
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </button>
               </div>
             </section>
 
@@ -260,7 +333,7 @@ export default function App() {
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
               <div className="text-center max-w-2xl mx-auto space-y-2">
                 <h2 className="text-3xl font-extrabold text-agro-600">Servicios Llave en Mano</h2>
-                <p className="text-gray-500 text-sm">
+                <p className="text-gray-600 text-sm">
                   Apoyamos al productor agropecuario de Santa Cruz en todas las etapas del ciclo de cultivo y colecta.
                 </p>
               </div>
@@ -269,29 +342,29 @@ export default function App() {
                 {[
                   {
                     title: 'Plantación y Siembra',
-                    icon: <Tractor className="h-10 w-10 text-agro-500" />,
+                    icon: <Tractor className="h-10 w-10 text-agro-500" aria-hidden="true" />,
                     desc: 'Maquinaria de siembra neumática de precisión para maíz, soya y sorgo, maximizando rendimiento por hectárea.'
                   },
                   {
                     title: 'Sistemas de Riego',
-                    icon: <Droplets className="h-10 w-10 text-blue-400" />,
+                    icon: <Droplets className="h-10 w-10 text-blue-400" aria-hidden="true" />,
                     desc: 'Instalación y monitoreo de pivotes y sistemas por goteo para contrarrestar sequías climáticas.'
                   },
                   {
                     title: 'Cosecha y Colecta',
-                    icon: <Wheat className="h-10 w-10 text-gold-400" />,
+                    icon: <Wheat className="h-10 w-10 text-gold-400" aria-hidden="true" />,
                     desc: 'Cosecha mecanizada ultra-rápida, picado de forraje de calidad y ensilado compacto in-situ o traslado.'
                   },
                   {
                     title: 'Fumigación de Cultivos',
-                    icon: <Plane className="h-10 w-10 text-gray-500" />,
+                    icon: <Plane className="h-10 w-10 text-gray-500" aria-hidden="true" />,
                     desc: 'Control de plagas terrestre y aéreo con drones avanzados para coberturas uniformes y ecológicas.'
                   }
                 ].map((srv, idx) => (
                   <div key={idx} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
                     <div className="mb-4">{srv.icon}</div>
                     <h3 className="font-extrabold text-gray-800 text-lg mb-2">{srv.title}</h3>
-                    <p className="text-gray-500 text-xs leading-relaxed">{srv.desc}</p>
+                    <p className="text-gray-600 text-sm leading-relaxed">{srv.desc}</p>
                   </div>
                 ))}
               </div>
@@ -333,6 +406,8 @@ export default function App() {
         {currentView === 'catalog' && (
           <CatalogCart
             products={products}
+            productsLoading={productsLoading}
+            onRetryProducts={() => { setProductsLoading(true); loadProducts(); }}
             productsOffline={productsOffline}
             productsError={productsError}
             cart={cart}
@@ -343,6 +418,7 @@ export default function App() {
           />
         )}
 
+        <Suspense fallback={<Cargando />}>
         {currentView === 'confirmation' && submittedOrder && (
           <Confirmation
             order={submittedOrder}
@@ -355,7 +431,7 @@ export default function App() {
           <section className="max-w-xl mx-auto px-4 py-12 space-y-6" aria-labelledby="titulo-estado-pago">
             <div className="text-center space-y-1">
               <h1 id="titulo-estado-pago" className="text-2xl font-extrabold text-gray-900">Pedido {pedidoRetorno}</h1>
-              <p className="text-sm text-gray-500">Estado del pago por QR</p>
+              <p className="text-sm text-gray-600">Estado del pago por QR</p>
             </div>
             <PagoQr codigo={pedidoRetorno} />
             <button type="button" onClick={handleBackToStart} className="w-full text-sm font-bold text-agro-600 underline">
@@ -366,7 +442,7 @@ export default function App() {
 
         {currentView === 'admin' && (
           !sessionChecked ? (
-            <div className="py-24 text-center text-gray-400 text-sm">Verificando sesión...</div>
+            <Cargando texto="Verificando sesión…" />
           ) : user && token ? (
             // El panel usa tarjetas translúcidas pensadas para fondo oscuro: se le da su propio fondo
             <div className="bg-dark-950 text-white">
@@ -384,6 +460,7 @@ export default function App() {
             />
           )
         )}
+        </Suspense>
       </main>
 
       <Footer />

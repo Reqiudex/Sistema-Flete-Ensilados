@@ -590,6 +590,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
             onClick={refreshAll}
             className="p-2 bg-dark-900 border border-dark-600 hover:border-agro-500 rounded-xl text-white transition-all hover:scale-105"
             title="Sincronizar Datos"
+            aria-label="Sincronizar Datos"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -597,6 +598,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
             onClick={onLogout}
             className="p-2 bg-dark-900 border border-dark-600 hover:border-red-500 rounded-xl text-red-400 transition-all hover:scale-105"
             title="Cerrar Sesión"
+            aria-label="Cerrar Sesión"
           >
             <LogOut className="h-4 w-4" />
           </button>
@@ -750,9 +752,11 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                   {stats.gainLossData.length === 0 ? (
                     <span className="text-dark-400 text-sm">Sin datos para graficar</span>
                   ) : (
+                    <div className="w-full h-full" aria-hidden="true">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
+                          rootTabIndex={-1}
                           data={stats.gainLossData}
                           cx="50%"
                           cy="50%"
@@ -768,6 +772,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                         <Tooltip formatter={(value) => `${value.toLocaleString()} Bs.`} />
                       </PieChart>
                     </ResponsiveContainer>
+                    </div>
                   )}
                 </div>
                 <div className="space-y-2 text-xs">
@@ -795,9 +800,11 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                   {stats.salesByProductData.length === 0 ? (
                     <span className="text-dark-400 text-sm">Sin datos para graficar</span>
                   ) : (
+                    <div className="w-full h-full" aria-hidden="true">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
+                          rootTabIndex={-1}
                           data={stats.salesByProductData}
                           cx="50%"
                           cy="50%"
@@ -812,6 +819,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                         <Tooltip formatter={(value) => `${value.toLocaleString()} Bs.`} />
                       </PieChart>
                     </ResponsiveContainer>
+                    </div>
                   )}
                 </div>
                 <div className="flex justify-center flex-wrap gap-x-4 gap-y-2 text-xs">
@@ -998,6 +1006,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                           </td>
                           <td className="py-4 px-6 text-center">
                             <select
+                              aria-label={`Estado del pedido ${order.order_code}`}
                               value={order.status}
                               disabled={TRANSICIONES[order.status].length === 0}
                               onChange={(e) => handleStatusChange(order.id!, e.target.value as OrderStatus)}
@@ -1059,6 +1068,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                                 onClick={() => handleStatusChange(order.id!, 'Cancelado')}
                                 className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                                 title="Cancelar Pedido (devuelve el stock)"
+            aria-label="Cancelar Pedido (devuelve el stock)"
                               >
                                 <X className="h-4 w-4" />
                               </button>
@@ -1105,6 +1115,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                       <div className="flex space-x-1">
                         <button
                           onClick={() => startEditProduct(prod)}
+                          title="Editar producto"
+                          aria-label={`Editar ${prod.name}`}
                           className="p-1.5 text-agro-accent hover:bg-agro-500/10 rounded-lg transition-all"
                         >
                           <Edit2 className="h-4 w-4" />
@@ -1114,6 +1126,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                             onClick={() => handleDeleteProduct(prod.id)}
                             className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                             title="Desactivar producto"
+            aria-label="Desactivar producto"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -1213,6 +1226,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                           onClick={() => startEditAdmin(adm)}
                           className="p-1.5 text-agro-accent hover:bg-agro-500/10 rounded-lg transition-all"
                           title="Modificar Administrador"
+            aria-label="Modificar Administrador"
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
@@ -1222,6 +1236,7 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                             onClick={() => handleDeleteAdmin(adm.id)}
                             className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                             title="Eliminar Cuenta"
+            aria-label="Eliminar Cuenta"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -1258,8 +1273,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                   ['pct_costo_logistico', 'Costo logístico estimado (fracción del flete, ej. 0.70)', '0.01'],
                 ] as const).map(([campo, etiqueta, paso]) => (
                   <div key={campo}>
-                    <label className="block text-xs font-bold text-dark-300 uppercase mb-1">{etiqueta}</label>
-                    <input
+                    <label htmlFor={`param-${campo}`} className="block text-xs font-bold text-dark-300 uppercase mb-1">{etiqueta}</label>
+                    <input id={`param-${campo}`}
                       type="number"
                       step={paso}
                       min="0"
@@ -1292,10 +1307,10 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Contraseña actual</label>
+                  <label htmlFor="adm-campo-2" className="block text-xs font-bold text-dark-300 uppercase mb-1">Contraseña actual</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
-                    <input
+                    <input id="adm-campo-2"
                       type="password"
                       value={selfForm.current}
                       onChange={e => setSelfForm(prev => ({ ...prev, current: e.target.value }))}
@@ -1307,10 +1322,10 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
+                  <label htmlFor="adm-campo-3" className="block text-xs font-bold text-dark-300 uppercase mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
-                    <input
+                    <input id="adm-campo-3"
                       type="password"
                       value={selfForm.next}
                       onChange={e => setSelfForm(prev => ({ ...prev, next: e.target.value }))}
@@ -1460,15 +1475,15 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
           <form onSubmit={handleRegisterManualOrder} className="glass rounded-3xl p-6 max-w-lg w-full border-gradient-agro space-y-4 animate-scale-in">
             <div className="flex justify-between items-start">
               <h3 className="font-display font-extrabold text-white text-lg">Registrar Venta Directa (Manual)</h3>
-              <button type="button" onClick={() => setShowOrderModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+              <button type="button" onClick={() => setShowOrderModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar" aria-label="Cerrar ventana">
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Nombre del Cliente</label>
-                <input
+                <label htmlFor="adm-campo-4" className="block text-xs font-bold text-dark-300 uppercase mb-1">Nombre del Cliente</label>
+                <input id="adm-campo-4"
                   type="text"
                   required
                   value={manualOrderForm.customer_name}
@@ -1479,8 +1494,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Celular Cliente</label>
-                <input
+                <label htmlFor="adm-campo-5" className="block text-xs font-bold text-dark-300 uppercase mb-1">Celular Cliente</label>
+                <input id="adm-campo-5"
                   type="tel"
                   required
                   value={manualOrderForm.customer_phone}
@@ -1491,8 +1506,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Método de Pago</label>
-                <select
+                <label htmlFor="adm-campo-6" className="block text-xs font-bold text-dark-300 uppercase mb-1">Método de Pago</label>
+                <select id="adm-campo-6"
                   value={manualOrderForm.payment_method}
                   onChange={e => setManualOrderForm(prev => ({ ...prev, payment_method: e.target.value as any }))}
                   className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none cursor-pointer"
@@ -1504,8 +1519,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Producto</label>
-                <select
+                <label htmlFor="adm-campo-7" className="block text-xs font-bold text-dark-300 uppercase mb-1">Producto</label>
+                <select id="adm-campo-7"
                   value={manualOrderForm.product_id}
                   onChange={e => setManualOrderForm(prev => ({ ...prev, product_id: e.target.value }))}
                   className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none cursor-pointer"
@@ -1517,8 +1532,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Cantidad (Tons)</label>
-                <input
+                <label htmlFor="adm-campo-8" className="block text-xs font-bold text-dark-300 uppercase mb-1">Cantidad (Tons)</label>
+                <input id="adm-campo-8"
                   type="number"
                   min="0.5"
                   step="0.5"
@@ -1535,8 +1550,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </p>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Finca Latitud</label>
-                <input
+                <label htmlFor="adm-campo-9" className="block text-xs font-bold text-dark-300 uppercase mb-1">Finca Latitud</label>
+                <input id="adm-campo-9"
                   type="number"
                   step="0.0001"
                   required
@@ -1547,8 +1562,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Finca Longitud</label>
-                <input
+                <label htmlFor="adm-campo-10" className="block text-xs font-bold text-dark-300 uppercase mb-1">Finca Longitud</label>
+                <input id="adm-campo-10"
                   type="number"
                   step="0.0001"
                   required
@@ -1588,15 +1603,15 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               <h3 className="font-display font-extrabold text-white text-lg">
                 {editingProduct ? `Editar Silo: ${editingProduct.name}` : 'Registrar Nuevo Silo de Forraje'}
               </h3>
-              <button type="button" onClick={() => setShowProductModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+              <button type="button" onClick={() => setShowProductModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar" aria-label="Cerrar ventana">
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Nombre Comercial del Producto</label>
-                <input
+                <label htmlFor="adm-campo-11" className="block text-xs font-bold text-dark-300 uppercase mb-1">Nombre Comercial del Producto</label>
+                <input id="adm-campo-11"
                   type="text"
                   required
                   value={productForm.name}
@@ -1607,8 +1622,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Descripción Nutritiva / Detalles</label>
-                <textarea
+                <label htmlFor="adm-campo-12" className="block text-xs font-bold text-dark-300 uppercase mb-1">Descripción Nutritiva / Detalles</label>
+                <textarea id="adm-campo-12"
                   value={productForm.description}
                   onChange={e => setProductForm(prev => ({ ...prev, description: e.target.value }))}
                   required
@@ -1620,8 +1635,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Precio Unitario (Bs./Ton)</label>
-                  <input
+                  <label htmlFor="adm-campo-13" className="block text-xs font-bold text-dark-300 uppercase mb-1">Precio Unitario (Bs./Ton)</label>
+                  <input id="adm-campo-13"
                     type="number"
                     min="0"
                     step="0.01"
@@ -1633,8 +1648,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Stock Disponible (Tons)</label>
-                  <input
+                  <label htmlFor="adm-campo-14" className="block text-xs font-bold text-dark-300 uppercase mb-1">Stock Disponible (Tons)</label>
+                  <input id="adm-campo-14"
                     type="number"
                     min="0"
                     step="0.01"
@@ -1646,8 +1661,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Factor Logístico de Peso (Flete)</label>
-                  <input
+                  <label htmlFor="adm-campo-15" className="block text-xs font-bold text-dark-300 uppercase mb-1">Factor Logístico de Peso (Flete)</label>
+                  <input id="adm-campo-15"
                     type="number"
                     step="0.1"
                     min="0.1"
@@ -1688,15 +1703,15 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               <h3 className="font-display font-extrabold text-white text-lg">
                 {editingAdmin ? 'Modificar Administrador' : 'Registrar Nuevo Administrador'}
               </h3>
-              <button type="button" onClick={() => setShowAdminModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar">
+              <button type="button" onClick={() => setShowAdminModal(false)} className="text-dark-400 hover:text-white transition-colors" title="Cerrar" aria-label="Cerrar ventana">
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Correo Electrónico</label>
-                <input
+                <label htmlFor="adm-campo-16" className="block text-xs font-bold text-dark-300 uppercase mb-1">Correo Electrónico</label>
+                <input id="adm-campo-16"
                   type="email"
                   required
                   disabled={!!editingAdmin}
@@ -1708,10 +1723,10 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">
+                <label htmlFor="adm-campo-17" className="block text-xs font-bold text-dark-300 uppercase mb-1">
                   {editingAdmin ? 'Contraseña (vacío para no cambiar)' : 'Contraseña de Acceso'}
                 </label>
-                <input
+                <input id="adm-campo-17"
                   type="password"
                   required={!editingAdmin}
                   minLength={8}
@@ -1723,8 +1738,8 @@ export default function AdminDashboard({ user, onLogout, onSessionExpired, addTo
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-dark-300 uppercase mb-1">Rol de Acceso en Sistema</label>
-                <select
+                <label htmlFor="adm-campo-18" className="block text-xs font-bold text-dark-300 uppercase mb-1">Rol de Acceso en Sistema</label>
+                <select id="adm-campo-18"
                   value={adminForm.role}
                   onChange={e => setAdminForm(prev => ({ ...prev, role: e.target.value as any }))}
                   className="w-full bg-dark-900 border border-dark-650 rounded-xl py-2 px-3 text-white text-sm focus:outline-none cursor-pointer"

@@ -7,22 +7,24 @@ Esta guía describe el uso del sistema web desde la perspectiva del **cliente** 
 ## Parte 1. Cliente (no requiere registro)
 
 ### 1.1 Conocer la empresa y los productos (HU01, HU02)
-1. Abra la página principal. Verá la presentación, los servicios, la historia, misión y visión.
-2. Pulse **Cotizar Ensilado y Flete** para ir al catálogo con **Silo de Maíz, Soya y Sorgo**, su precio por tonelada y la disponibilidad en planta.
+1. Abra la página principal. Verá la presentación, los tres pasos del pedido (**Cómo funciona**), los servicios, la historia, misión y visión.
+2. Pulse **Cotizar ensilado y flete** (o **Empezar mi pedido**) para ir al catálogo con **Silo de Maíz, Soya y Sorgo**, su precio por tonelada y la disponibilidad en planta.
 
 ### 1.2 Armar el pedido (HU03)
-1. En cada producto escriba las **toneladas** (múltiplos de 0,5; mínimo 0,5 TM por pedido) y pulse **Agregar**. No se puede pedir más de lo disponible.
-2. En el **Carrito de Compra** puede cambiar cantidades o quitar productos. Se muestran el peso total y el subtotal del material.
-3. Pulse **Continuar Cotización**.
+1. En cada producto escriba las **toneladas** (múltiplos de 0,5; mínimo 0,5 TM por pedido) y pulse **Agregar**. No se puede pedir más de lo disponible. Aparece el aviso "Agregado: …" y la tarjeta indica cuántas toneladas tiene en el carrito.
+2. En **Su carrito** puede cambiar cantidades o quitar productos. Se muestran el peso total y el subtotal del producto. En el celular, una barra fija abajo muestra el subtotal y el botón **Continuar**; el botón del carrito de la cabecera lleva directo al carrito.
+3. Pulse **Continuar**.
 
 ### 1.3 Términos y condiciones
-Lea los términos y marque la casilla de aceptación (incluye el consentimiento para usar su ubicación solo para calcular el flete). Pulse **Continuar a Ubicación**.
+Lea los términos y marque la casilla de aceptación (incluye el consentimiento para usar su ubicación solo para calcular el flete). Pulse **Continuar a la ubicación**.
 
 ### 1.4 Datos y ubicación de entrega (HU04, HU05)
 1. Escriba su **nombre completo** y su **celular** (8 dígitos, por ejemplo 78945612; también se acepta fijo de 7 dígitos o con +591).
-2. Elija el **método de pago**: **QR** (paga desde la app de su banco y se confirma solo), **Transferencia** o **WhatsApp** (los verifica el personal). La plataforma no procesa tarjetas ni guarda datos bancarios.
-3. **Arrastre el marcador rojo** del mapa hasta su finca. El sistema calcula en el momento: distancia, viajes necesarios (un viaje por cada 30 TM o fracción), costo de flete y total estimado.
-4. Pulse **Confirmar y Enviar Pedido**.
+2. Elija la **forma de pago**: **QR** (paga desde la app de su banco y se confirma solo), **Transferencia** o **WhatsApp** (los verifica el personal). La plataforma no procesa tarjetas ni guarda datos bancarios.
+3. **Toque el mapa o arrastre el marcador rojo** hasta su finca. Mientras no lo haga, un aviso indica que el flete mostrado corresponde al punto de partida del mapa. El sistema calcula en el momento: distancia, viajes necesarios (un viaje por cada 30 TM o fracción), costo de flete y total estimado.
+4. Pulse **Confirmar y enviar pedido**. Si falta un dato, el mensaje aparece junto al botón y el cursor vuelve al campo que hay que corregir.
+
+En el celular el orden de la pantalla es: sus datos → mapa → resumen y botón de envío.
 
 > El servidor vuelve a calcular precios y flete al registrar el pedido; si hubo cambios en el catálogo, el total definitivo es el que muestra la confirmación.
 
@@ -43,7 +45,7 @@ Si el pago QR no está disponible, solo verá *Transferencia* y *WhatsApp*. Los 
 
 ### 1.6 Trabajar sin señal (zonas rurales)
 - Si no hay conexión, el catálogo muestra el **último catálogo guardado** y aparece un aviso.
-- Si el mapa de Google no carga, pulse **Usar Cotizador Offline** e indique con el deslizador la **distancia aproximada** a San Ramón. El flete se estima con la misma fórmula del servidor.
+- Si el mapa de Google no carga, pulse **Sin mapa: indicar distancia** e indique con el deslizador la **distancia aproximada** a San Ramón. El flete se estima con la misma fórmula del servidor.
 - Si al enviar el pedido no hay internet, queda **guardado en su dispositivo** (pantalla "Pedido Guardado en su Dispositivo") y **se envía solo** cuando vuelva la señal, siempre que abra la aplicación. Al enviarse recibirá el código definitivo. Si en ese tiempo se agotó el stock, se le avisará que el pedido no pudo registrarse.
 - El flete y el total definitivos los confirma siempre el servidor.
 

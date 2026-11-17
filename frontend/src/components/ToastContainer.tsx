@@ -29,7 +29,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
     const t2 = setTimeout(() => {
       setVisible(false);
       setTimeout(() => onRemove(toast.id), 400);
-    }, 4500);
+    }, toast.type === 'error' || toast.type === 'warning' ? 8000 : 4500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
@@ -41,18 +41,20 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
         transition-all duration-400 ease-out
         ${visible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'}
       `}
-      style={{ minWidth: '300px', maxWidth: '380px' }}
+      style={{ width: 'min(380px, calc(100vw - 2rem))' }}
+      role={toast.type === 'error' ? 'alert' : 'status'}
     >
-      <div className="shrink-0 mt-0.5">{TOAST_ICONS[toast.type]}</div>
+      <div className="shrink-0 mt-0.5" aria-hidden="true">{TOAST_ICONS[toast.type]}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-white">{toast.title}</p>
-        <p className="text-xs text-dark-300 mt-0.5">{toast.message}</p>
+        <p className="text-xs text-dark-200 mt-0.5">{toast.message}</p>
       </div>
       <button
         onClick={() => { setVisible(false); setTimeout(() => onRemove(toast.id), 400); }}
-        className="shrink-0 text-dark-400 hover:text-white transition-colors"
+        className="shrink-0 -m-1.5 p-1.5 rounded-lg text-dark-300 hover:text-white transition-colors"
+        aria-label="Cerrar aviso"
       >
-        <X className="h-4 w-4" />
+        <X className="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
   );

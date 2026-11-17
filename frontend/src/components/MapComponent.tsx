@@ -11,6 +11,8 @@ interface MapComponentProps {
   onCalculationStateChange: (loading: boolean) => void;
   /** Error de validación del servidor (p. ej. pedido mínimo); null limpia el mensaje. */
   onError?: (mensaje: string | null) => void;
+  /** Solo interfaz: el cliente movió el marcador, tocó el mapa o indicó la distancia a mano */
+  onUbicacionElegida?: () => void;
 }
 
 const ORIGIN_LAT = PARAMETROS_POR_DEFECTO.origen.lat;
@@ -22,6 +24,7 @@ export default function MapComponent({
   onFleteCalculated,
   onCalculationStateChange,
   onError,
+  onUbicacionElegida,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -111,7 +114,7 @@ export default function MapComponent({
         position: markerCoords,
         map: map,
         draggable: true,
-        title: "Arrastre hasta su propiedad/finca",
+        title: "Su finca: arrastre el marcador o toque el mapa",
         icon: {
           url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png"
         }
@@ -119,17 +122,26 @@ export default function MapComponent({
 
       googleMarkerInstance.current = marker;
 
+      // Nueva posición elegida por el cliente (arrastrando el pin o tocando el mapa)
+      const elegir = (lat: number, lng: number) => {
+        const newCoords = { lat, lng };
+        setMarkerCoords(newCoords);
+        onLocationSelected(newCoords);
+        onUbicacionElegida?.();
+        calculateFlete(lat, lng);
+      };
+
       // Evento de fin de arrastre del pin
       marker.addListener('dragend', () => {
         const position = marker.getPosition();
-        if (position) {
-          const lat = position.lat();
-          const lng = position.lng();
-          const newCoords = { lat, lng };
-          setMarkerCoords(newCoords);
-          onLocationSelected(newCoords);
-          calculateFlete(lat, lng);
-        }
+        if (position) elegir(position.lat(), position.lng());
+      });
+
+      // Tocar el mapa mueve el pin a ese punto (en el celular es más fácil que arrastrarlo)
+      map.addListener('click', (e: google.maps.MapMouseEvent) => {
+        if (!e.latLng) return;
+        marker.setPosition(e.latLng);
+        elegir(e.latLng.lat(), e.latLng.lng());
       });
 
       // Registrar ubicación inicial
@@ -169,8 +181,9 @@ export default function MapComponent({
   // Modo offline manual: el cliente indica la distancia por carretera. Se genera un punto al sur de la
   // planta cuya distancia (línea recta × factor rural) coincide con ese valor, para que el servidor
   // recalcule el mismo flete cuando el pedido se envíe.
-  const handleOfflineDistanceChange = async (km: number) => {
+  const handleOfflineDistanceChange = async (km: number, elegidaPorCliente = false) => {
     setOfflineDistance(km);
+    if (elegidaPorCliente) onUbicacionElegida?.();
     const params = await obtenerParametros();
     const rectaKm = km / params.factor_correccion_rural;
     const coords = { lat: params.origen.lat - rectaKm / 111.19, lng: params.origen.lng };
@@ -194,37 +207,39 @@ export default function MapComponent({
               calculateFlete(markerCoords.lat, markerCoords.lng);
             }
           }}
-          className="bg-agro-600 hover:bg-agro-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-md transition-colors"
+          className="bg-agro-600 hover:bg-agro-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-md transition-colors"
         >
-          {isOfflineMode ? "Ver Mapa Satelital" : "Usar Cotizador Offline"}
+          {isOfflineMode ? "Volver al mapa" : "Sin mapa: indicar distancia"}
         </button>
       </div>
 
       {isOfflineMode ? (
         /* Panel Offline de Contingencia Rural */
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 flex flex-col space-y-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 pt-14 flex flex-col space-y-4">
           <div className="flex items-center space-x-2 text-agro-600 bg-agro-50 p-3 rounded-lg border border-agro-100">
-            <AlertCircle className="h-5 w-5 text-agro-accent shrink-0" />
-            <p className="text-xs font-medium">
-              <strong>Modo de Contingencia Offline activo.</strong> Cotización estimada sin internet: indique la distancia aproximada de su finca a San Ramón. El pedido se enviará al servidor cuando vuelva la conexión y el flete definitivo se confirmará allí.
+            <AlertCircle className="h-5 w-5 text-agro-600 shrink-0" aria-hidden="true" />
+            <p className="text-sm font-medium">
+              <strong>Cotización sin mapa.</strong> Indique la distancia aproximada por carretera de su finca a San Ramón. El flete definitivo lo confirma el servidor al registrar el pedido.
             </p>
           </div>
 
           <div className="space-y-2">
-            <div className="flex justify-between text-sm font-bold text-gray-700">
-              <span>Distancia aproximada por carretera:</span>
-              <span className="text-agro-500 font-extrabold text-lg">{offlineDistance} km</span>
+            <div className="flex justify-between items-baseline text-sm font-bold text-gray-700">
+              <label htmlFor="distancia-manual">Distancia aproximada por carretera</label>
+              <span className="text-agro-600 font-extrabold text-lg" aria-hidden="true">{offlineDistance} km</span>
             </div>
             <input
+              id="distancia-manual"
+              aria-valuetext={`${offlineDistance} kilómetros`}
               type="range"
               min="5"
               max="400"
               step="5"
               value={offlineDistance}
-              onChange={(e) => handleOfflineDistanceChange(Number(e.target.value))}
+              onChange={(e) => handleOfflineDistanceChange(Number(e.target.value), true)}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-agro-500"
             />
-            <div className="flex justify-between text-[10px] text-gray-400">
+            <div className="flex justify-between text-xs text-gray-600" aria-hidden="true">
               <span>Cerca (5 km)</span>
               <span>Distante (400 km)</span>
             </div>
@@ -232,11 +247,11 @@ export default function MapComponent({
 
           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-150">
             <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <span className="block text-[10px] text-gray-400 uppercase font-bold">Origen</span>
+              <span className="block text-xs text-gray-600 uppercase font-bold">Origen</span>
               <span className="font-bold text-xs text-gray-700">Planta San Ramón</span>
             </div>
             <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <span className="block text-[10px] text-gray-400 uppercase font-bold">Destino Mapeado</span>
+              <span className="block text-xs text-gray-600 uppercase font-bold">Destino</span>
               <span className="font-bold text-xs text-gray-700">Finca del Cliente</span>
             </div>
           </div>
@@ -246,15 +261,17 @@ export default function MapComponent({
         <div className="relative">
           <div
             ref={mapRef}
-            className="w-full h-[380px] bg-gray-100"
+            className="w-full h-[320px] sm:h-[380px] lg:h-[440px] bg-gray-100"
+            role="application"
+            aria-label="Mapa para ubicar su finca. Si no puede usar el mapa, use el botón Sin mapa: indicar distancia."
           />
           {loadError && (
             <div className="absolute inset-0 bg-gray-200/90 flex flex-col items-center justify-center p-6 text-center space-y-4">
-              <AlertCircle className="h-12 w-12 text-agro-accent animate-bounce" />
-              <div>
-                <h4 className="font-bold text-gray-800 text-lg">Google Maps Bloqueado / Sin Conexión</h4>
-                <p className="text-xs text-gray-500 max-w-sm mt-1">
-                  Parece que no hay conexión de datos en el campo. Hemos activado la herramienta de cálculo de contingencia.
+              <AlertCircle className="h-12 w-12 text-agro-600" aria-hidden="true" />
+              <div role="alert">
+                <h3 className="font-bold text-gray-800 text-lg">No se pudo cargar el mapa</h3>
+                <p className="text-sm text-gray-700 max-w-sm mt-1">
+                  Puede deberse a la señal. Indique la distancia a su finca a mano y siga con su pedido.
                 </p>
               </div>
               <button
@@ -262,7 +279,7 @@ export default function MapComponent({
                 onClick={() => setIsOfflineMode(true)}
                 className="bg-agro-500 hover:bg-agro-600 text-white font-bold text-sm px-4 py-2 rounded-lg transition-colors shadow-md"
               >
-                Ingresar Distancia Manualmente
+                Indicar la distancia a mano
               </button>
             </div>
           )}

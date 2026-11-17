@@ -63,7 +63,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
   return (
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-agro-500/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-gold-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-agro-600/5 rounded-full blur-3xl animate-spin-slow" />
@@ -87,13 +87,13 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
       <div className="relative z-10 w-full max-w-md animate-fade-in-up">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-agro rounded-2xl shadow-agro-lg mb-4 animate-bounce-soft">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-agro rounded-2xl shadow-agro-lg mb-4" aria-hidden="true">
             <Sprout className="h-10 w-10 text-white" />
           </div>
           <h1 className="text-4xl font-display font-black text-white mb-1">
-            ENSILADOS
+            ENSILADOS <span className="sr-only">Santa Cruz: acceso de administración</span>
           </h1>
-          <p className="text-gradient-gold font-bold tracking-widest text-sm uppercase">
+          <p className="text-gradient-gold font-bold tracking-widest text-sm uppercase" aria-hidden="true">
             Santa Cruz
           </p>
           <p className="text-dark-300 text-sm mt-2">
@@ -112,12 +112,13 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 {/* Email */}
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
-                    Correo Electrónico
+                  <label htmlFor="acceso-correo" className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
+                    Correo electrónico
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-300" aria-hidden="true" />
                     <input
+                      id="acceso-correo"
                       type="email"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
@@ -131,12 +132,13 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
 
                 {/* Password */}
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
+                  <label htmlFor="acceso-clave" className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
                     Contraseña
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-300" aria-hidden="true" />
                     <input
+                      id="acceso-clave"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
@@ -148,9 +150,11 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      aria-pressed={showPassword}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2.5 rounded-lg text-dark-300 hover:text-white transition-colors"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                     </button>
                   </div>
                 </div>
@@ -161,11 +165,11 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                   className="btn-gold w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /><span className="sr-only">Ingresando…</span></>
                   ) : (
                     <>
-                      <span>Ingresar al Sistema</span>
-                      <ArrowRight className="h-4 w-4" />
+                      <span>Ingresar al sistema</span>
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </>
                   )}
                 </button>
@@ -176,13 +180,13 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
             <div className="animate-fade-in-up">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-12 h-12 bg-gold-500/20 rounded-xl flex items-center justify-center">
-                  <Shield className="h-6 w-6 text-gold-400 animate-pulse-glow" />
+                  <Shield className="h-6 w-6 text-gold-400" aria-hidden="true" />
                 </div>
                 <div>
                   <h2 className="text-lg font-display font-bold text-white">
                     Verificación 2FA
                   </h2>
-                  <p className="text-xs text-dark-400">Segundo paso de acceso</p>
+                  <p className="text-xs text-dark-300">Segundo paso de acceso</p>
                 </div>
               </div>
 
@@ -192,10 +196,12 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
 
               <form onSubmit={handle2FAVerify} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
-                    Código de Verificación
+                  <label htmlFor="acceso-codigo" className="block text-xs font-bold text-dark-300 uppercase tracking-wider mb-1.5">
+                    Código de verificación
                   </label>
                   <input
+                    id="acceso-codigo"
+                    autoComplete="one-time-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]{6}"
@@ -214,10 +220,10 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                   className="btn-gold w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {twoFALoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /><span className="sr-only">Verificando…</span></>
                   ) : (
                     <>
-                      <CheckCircle2 className="h-5 w-5" />
+                      <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                       <span>Verificar Código</span>
                     </>
                   )}
@@ -226,7 +232,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
                 <button
                   type="button"
                   onClick={() => { setStep('login'); setTwoFACode(''); }}
-                  className="w-full text-sm text-dark-400 hover:text-white transition-colors"
+                  className="w-full py-2 text-sm text-dark-300 hover:text-white transition-colors"
                 >
                   ← Volver al inicio de sesión
                 </button>
@@ -235,7 +241,7 @@ export default function AuthScreen({ onLogin, addToast }: AuthScreenProps) {
           )}
         </div>
 
-        <p className="text-center text-dark-500 text-xs mt-6">
+        <p className="text-center text-dark-300 text-xs mt-6">
           Sistema Interno — Ensilados Santa Cruz © {new Date().getFullYear()}
         </p>
       </div>

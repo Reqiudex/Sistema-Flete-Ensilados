@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, Sprout, ShoppingCart, LogOut, ChevronDown, Leaf, Home, Wheat, Settings } from 'lucide-react';
+import { Menu, X, Sprout, ShoppingCart, LogOut, Lock, Leaf, Home, Wheat, Settings } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface HeaderProps {
   currentView: string;
   setView: (view: string) => void;
   cartCount: number;
+  /** Lleva al catálogo y muestra el carrito */
+  onCartClick?: () => void;
   user: UserProfile | null;
   onLogout: () => void;
 }
 
-export default function Header({ currentView, setView, cartCount, user, onLogout }: HeaderProps) {
+export default function Header({ currentView, setView, cartCount, onCartClick, user, onLogout }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -21,10 +23,12 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
   }, []);
 
   const navItems = [
-    { id: 'landing', label: 'Inicio', icon: <Home className="h-5 w-5" /> },
-    { id: 'catalog', label: 'Catálogo', icon: <Wheat className="h-5 w-5" /> },
-    { id: 'admin', label: user ? `${user.role}` : 'Administración', icon: <Settings className="h-5 w-5" /> },
+    { id: 'landing', label: 'Inicio', icon: <Home className="h-5 w-5" aria-hidden="true" /> },
+    { id: 'catalog', label: 'Catálogo', icon: <Wheat className="h-5 w-5" aria-hidden="true" /> },
+    { id: 'admin', label: user ? 'Panel' : 'Administración', icon: <Settings className="h-5 w-5" aria-hidden="true" /> },
   ];
+
+  const cartCountTxt = cartCount.toLocaleString('es-BO', { maximumFractionDigits: 2 });
 
   const handleNavClick = (viewId: string) => {
     setView(viewId);
@@ -49,9 +53,9 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
           <button
             onClick={() => handleNavClick('landing')}
             className="flex items-center space-x-3 group focus:outline-none"
-            aria-label="Ir al inicio"
+           
           >
-            <div className="relative">
+            <div className="relative" aria-hidden="true">
               <div className="w-10 h-10 bg-gradient-to-br from-agro-400 to-agro-600 rounded-xl flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-all duration-300 group-hover:scale-110">
                 <Sprout className="h-5 w-5 text-white animate-sway" />
               </div>
@@ -60,14 +64,16 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
                 <span className="absolute inset-0 rounded-full bg-gold-400 animate-ping opacity-75" />
               </span>
             </div>
-            <div className="hidden sm:block text-left">
+            <span className="sr-only sm:not-sr-only text-left">
               <span className="font-display font-black text-lg text-white leading-none tracking-wide block group-hover:text-agro-200 transition-colors">
                 ENSILADOS
               </span>
+              {' '}
               <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-gold-400 leading-none">
                 Santa Cruz
               </span>
-            </div>
+              <span className="sr-only">{' (inicio)'}</span>
+            </span>
           </button>
 
           {/* ── Desktop Nav ── */}
@@ -102,11 +108,11 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
             {/* Cart Button */}
             <button
               id="header-cart-btn"
-              onClick={() => handleNavClick('catalog')}
+              onClick={() => { setIsOpen(false); (onCartClick ?? (() => setView('catalog')))(); }}
               className="relative flex items-center gap-2 px-3 py-2 bg-agro-500/20 hover:bg-agro-500/35 border border-agro-400/25 rounded-xl transition-all duration-300 hover:scale-105 group"
-              aria-label={`Carrito, ${cartCount} toneladas`}
             >
-              <ShoppingCart className="h-4 w-4 text-agro-300 group-hover:text-white transition-colors" />
+              <ShoppingCart className="h-4 w-4 text-agro-300 group-hover:text-white transition-colors" aria-hidden="true" />
+              <span className="sr-only">{'Ver carrito: '}</span>
               <span
                 className={`
                   min-w-[20px] h-5 flex items-center justify-center text-[11px] font-black rounded-full px-1
@@ -116,9 +122,10 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
                     : 'bg-dark-700 text-dark-400'}
                 `}
               >
-                {cartCount}
+                {cartCountTxt}
               </span>
-              <span className="hidden sm:block text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+              {' '}
+              <span className="sr-only sm:not-sr-only text-xs font-medium text-white/80 group-hover:text-white transition-colors">
                 ton
               </span>
             </button>
@@ -126,18 +133,19 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
             {/* User info / Logout */}
             {user ? (
               <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-green rounded-xl border border-agro-400/20">
-                  <Leaf className="h-3.5 w-3.5 text-agro-300" />
+                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 glass-green rounded-xl border border-agro-400/20">
+                  <Leaf className="h-3.5 w-3.5 text-agro-300" aria-hidden="true" />
                   <span className="text-xs font-bold text-agro-200">{user.role}</span>
                 </div>
                 <button
                   id="header-logout-btn"
                   onClick={onLogout}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-950/40 hover:bg-red-900/50 border border-red-700/30 rounded-xl text-red-300 hover:text-red-200 text-xs font-bold transition-all duration-300 hover:scale-105"
-                  title="Cerrar Sesión"
+                  title="Cerrar sesión"
+                  aria-label="Cerrar sesión"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
-                  <span className="hidden sm:block">Salir</span>
+                  <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden lg:block">Salir</span>
                 </button>
               </div>
             ) : (
@@ -145,8 +153,8 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
                 onClick={() => handleNavClick('admin')}
                 className="hidden sm:flex items-center gap-2 btn-gold px-4 py-2 text-xs"
               >
+                <Lock className="h-3 w-3" aria-hidden="true" />
                 <span>Admin</span>
-                <ChevronDown className="h-3 w-3" />
               </button>
             )}
 
@@ -156,7 +164,8 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
               onClick={() => setIsOpen(!isOpen)}
               className="md:hidden relative p-2 rounded-xl glass border border-white/10 text-white hover:border-agro-400/40 transition-all duration-200"
               aria-expanded={isOpen}
-              aria-label="Menú"
+              aria-controls="menu-movil"
+              aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
             >
               <span className={`block transition-all duration-300 ${isOpen ? 'rotate-90 opacity-0 absolute' : 'rotate-0 opacity-100'}`}>
                 <Menu className="h-5 w-5" />
@@ -171,21 +180,21 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
 
       {/* ── Mobile Menu ── */}
       <div
-        className={`md:hidden overflow-hidden transition-all duration-400 ease-smooth ${
-          isOpen ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'
-        }`}
+        id="menu-movil"
+        hidden={!isOpen}
+        className="md:hidden"
       >
         <div className="glass-dark border-t border-agro-500/20 px-4 py-4 space-y-1">
-          {navItems.map((item, i) => {
+          {navItems.map((item) => {
             const active = currentView === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
+                aria-current={active ? 'page' : undefined}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold
                   transition-all duration-200 text-left
-                  animate-fade-in-left animation-delay-${i * 100}
                   ${active
                     ? 'bg-agro-500/25 text-white border border-agro-400/30'
                     : 'text-white/70 hover:bg-white/6 hover:text-white'}
@@ -203,9 +212,9 @@ export default function Header({ currentView, setView, cartCount, user, onLogout
               onClick={() => { onLogout(); setIsOpen(false); }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-300 hover:bg-red-950/30 transition-all"
             >
-              <LogOut className="h-4 w-4" />
-              <span>Cerrar Sesión</span>
-              <span className="ml-auto text-xs text-dark-500">{user.email}</span>
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              <span>Cerrar sesión</span>
+              <span className="ml-auto text-xs text-dark-300 truncate max-w-[50%]">{user.email}</span>
             </button>
           )}
         </div>

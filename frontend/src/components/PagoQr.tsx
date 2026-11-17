@@ -89,7 +89,7 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
       <div className="border border-green-200 bg-green-50 rounded-2xl p-6 flex items-center space-x-3" role="status">
         <CheckCircle2 className="h-8 w-8 text-green-600 shrink-0" />
         <div>
-          <h3 className="font-bold text-green-800">Pago confirmado</h3>
+          <h2 className="font-bold text-green-800">Pago confirmado</h2>
           <p className="text-xs text-green-700">
             Recibimos su pago de Bs {fmt(pago.monto_a_pagar_bs ?? pago.total_bs)}. Su pedido continúa su proceso.
           </p>
@@ -127,8 +127,8 @@ export default function PagoQr({ codigo, inicial = null, onPagado }: PagoQrProps
     <div className="border border-agro-100 bg-agro-50/50 rounded-2xl p-6 space-y-4" aria-live="polite">
       <div className="flex items-center space-x-2 text-agro-600 pb-2 border-b border-agro-100">
         <QrCode className="h-5 w-5 text-agro-accent" />
-        <h3 className="font-bold text-sm uppercase tracking-wide">Pago con QR</h3>
-        <span className="ml-auto text-[10px] font-bold uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+        <h2 className="font-bold text-sm uppercase tracking-wide">Pago con QR</h2>
+        <span className="ml-auto text-xs font-bold uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
           Pendiente de pago
         </span>
       </div>

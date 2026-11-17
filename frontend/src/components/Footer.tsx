@@ -21,7 +21,7 @@ export default function Footer() {
     <footer className="relative bg-dark-950 border-t border-agro-600/20 overflow-hidden">
 
       {/* Background decorations */}
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-agro-600/5 rounded-full blur-3xl" />
         <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/3 rounded-full blur-3xl" />
         <div className="absolute inset-0 bg-dot-pattern opacity-30" />
@@ -38,7 +38,7 @@ export default function Footer() {
             {/* Logo */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-agro rounded-xl flex items-center justify-center shadow-glow-sm">
-                <Sprout className="h-5 w-5 text-white animate-sway" />
+                <Sprout className="h-5 w-5 text-white" aria-hidden="true" />
               </div>
               <div>
                 <span className="font-display font-black text-lg text-white leading-none tracking-wide block">
@@ -50,7 +50,7 @@ export default function Footer() {
               </div>
             </div>
 
-            <p className="text-sm text-dark-300 leading-relaxed">
+            <p className="text-sm text-dark-200 leading-relaxed">
               Líderes en nutrición ganadera y logística agrícola en el departamento de Santa Cruz. Eliminamos la gestión manual con tecnología de punta.
             </p>
 
@@ -60,28 +60,27 @@ export default function Footer() {
                 <span className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-60" />
                 <span className="absolute inset-0 bg-green-400 rounded-full" />
               </span>
-              <span className="text-xs text-agro-200 font-medium">Operando 24/7 — Temporada Cosecha</span>
+              <span className="text-xs text-agro-200 font-medium">Despacho 24/7 en temporada de cosecha</span>
             </div>
           </div>
 
           {/* ── Contact ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-100">
-            <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><MapPin className="h-3 w-3" /></span>
+            <h2 className="font-display font-bold text-white text-base flex items-center gap-2">
+              <span aria-hidden="true" className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><MapPin className="h-3 w-3" /></span>
               Central de Silos
-            </h4>
+            </h2>
             <ul className="space-y-3">
               {contactItems.map(({ icon: Icon, text, href }) => (
                 <li key={text}>
                   <a
                     href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-start gap-3 text-sm text-dark-300 hover:text-agro-300 transition-colors duration-200 group"
+                    {...(href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    className="flex items-start gap-3 py-1 text-sm text-dark-200 hover:text-agro-300 transition-colors duration-200 group"
                   >
-                    <Icon className="h-4 w-4 text-agro-500 shrink-0 mt-0.5 group-hover:text-gold-400 transition-colors" />
+                    <Icon className="h-4 w-4 text-agro-400 shrink-0 mt-0.5 group-hover:text-gold-400 transition-colors" aria-hidden="true" />
                     <span className="leading-snug">{text}</span>
-                    <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0 mt-0.5" />
+                    <ArrowUpRight aria-hidden="true" className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0 mt-0.5" />
                   </a>
                 </li>
               ))}
@@ -90,17 +89,17 @@ export default function Footer() {
 
           {/* ── Services ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-200">
-            <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Zap className="h-3 w-3" /></span>
+            <h2 className="font-display font-bold text-white text-base flex items-center gap-2">
+              <span aria-hidden="true" className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Zap className="h-3 w-3" /></span>
               Nuestros Servicios
-            </h4>
+            </h2>
             <ul className="space-y-2">
               {services.map(({ icon, text }) => (
                 <li
                   key={text}
-                  className="flex items-center gap-2 text-sm text-dark-300 hover:text-white transition-colors cursor-default group"
+                  className="flex items-center gap-2 text-sm text-dark-200"
                 >
-                  <span className="text-base group-hover:scale-110 transition-transform">{icon}</span>
+                  <span className="text-base" aria-hidden="true">{icon}</span>
                   <span>{text}</span>
                 </li>
               ))}
@@ -109,11 +108,11 @@ export default function Footer() {
 
           {/* ── Hours & CTA ── */}
           <div className="space-y-4 animate-fade-in-up animation-delay-300">
-            <h4 className="font-display font-bold text-white text-base flex items-center gap-2">
-              <span className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Clock className="h-3 w-3" /></span>
+            <h2 className="font-display font-bold text-white text-base flex items-center gap-2">
+              <span aria-hidden="true" className="w-6 h-6 bg-agro-500/30 rounded-lg flex items-center justify-center text-xs"><Clock className="h-3 w-3" /></span>
               Horario de Atención
-            </h4>
-            <ul className="space-y-2 text-sm text-dark-300">
+            </h2>
+            <ul className="space-y-2 text-sm text-dark-200">
               <li className="flex justify-between">
                 <span>Lun – Vie</span>
                 <span className="text-agro-300 font-semibold">07:00 – 18:00</span>
@@ -124,13 +123,13 @@ export default function Footer() {
               </li>
               <li className="flex justify-between">
                 <span>Domingo</span>
-                <span className="text-dark-500">Cerrado</span>
+                <span className="text-dark-300">Cerrado</span>
               </li>
             </ul>
 
             <div className="p-3 glass-gold rounded-xl">
               <p className="text-xs text-gold-300 font-semibold flex items-center gap-1.5">
-                <Moon className="h-4 w-4" /> Despacho logístico 24/7 durante época de cosecha
+                <Moon className="h-4 w-4" aria-hidden="true" /> Despacho logístico 24/7 durante época de cosecha
               </p>
             </div>
 
@@ -141,9 +140,10 @@ export default function Footer() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 w-full btn-agro px-4 py-2.5 text-xs justify-center rounded-xl"
             >
-              <span className="text-base flex items-center justify-center"><MessageCircle className="h-4 w-4" /></span>
-              <span>WhatsApp Directo</span>
-              <ExternalLink className="h-3 w-3 ml-auto" />
+              <span className="text-base flex items-center justify-center" aria-hidden="true"><MessageCircle className="h-4 w-4" /></span>
+              <span>Escribir por WhatsApp</span>
+              <span className="sr-only">(se abre en otra pestaña)</span>
+              <ExternalLink className="h-3 w-3 ml-auto" aria-hidden="true" />
             </a>
           </div>
         </div>
@@ -152,11 +152,11 @@ export default function Footer() {
         <div className="divider-agro mb-6" />
 
         {/* ── Bottom Bar ── */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-500">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-300">
           <p>© {year} Ensilados Santa Cruz — Todos los derechos reservados.</p>
           <p className="flex items-center gap-1.5">
             <span>Desarrollado con</span>
-            <Heart className="h-3 w-3 text-red-500 animate-heartbeat" />
+            <Heart className="h-3 w-3 text-red-500" aria-label="amor" />
             <span>para la agricultura boliviana</span>
           </p>
         </div>
